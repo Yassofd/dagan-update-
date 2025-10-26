@@ -42,7 +42,7 @@ interface Message {
 const SUGGESTED_QUESTIONS = [
   "Comment renouveler mon passeport ?",
   "Comment obtenir un duplicata d'un certificat de nationalité ?",
-  "Demande d'abonnement à la fibre optique  de YAS TOGO",
+  "Ai-je besoin d'un visa pour aller en Malaisie?",
   "Quelle est la procédure pour étudier en France pour un étudiant Togolais ?"
 ];
 
@@ -330,8 +330,8 @@ export const ChatInterface = () => {
             {messages.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-4 space-y-3">
                 <div className="text-center space-y-2">
-                  <div className="inline-flex items-center justify-center w-56 h-56 mb-0.5">
-                    <img src={avatarImage} alt="Dagan Avatar" className="h-48 w-48" />
+                  <div className="inline-flex items-center justify-center w-28 h-28 mb-0.5">
+                    <img src={avatarImage} alt="Dagan Avatar" className="h-24 w-24" />
                   </div>
                   <h2 className="text-lg font-bold text-foreground">Woezon, Bonjour je suis Dagan votre assistant IA</h2>
                   <p className="text-xs text-muted-foreground max-w-md mx-auto">
