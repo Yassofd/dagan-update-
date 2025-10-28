@@ -9,14 +9,11 @@ COPY package*.json ./
 # Install dependencies (including devDependencies)
 RUN npm install
 
-# Verify vite is installed
-RUN npx vite --version
-
 # Copy source code
 COPY . .
 
-# Build application
-RUN npm run build
+# Build application using npx to ensure vite is found
+RUN npx vite build
 
 # Stage 2: Production
 FROM nginx:1.25-alpine
