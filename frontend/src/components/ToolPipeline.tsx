@@ -105,11 +105,11 @@ export const ToolPipeline: React.FC<ToolPipelineProps> = ({ steps }) => {
   if (groupedSteps.length === 0) return null;
 
   return (
-    <div className="flex items-center space-x-2 py-2 px-3 bg-gradient-to-r from-blue-50/50 to-indigo-50/50 rounded-lg mb-3 border border-blue-100/50">
-      <div className="flex items-center space-x-2 flex-wrap">
+    <div className="flex flex-col sm:flex-row sm:items-center py-2 px-3 bg-gradient-to-r from-blue-50/50 to-indigo-50/50 rounded-lg mb-3 border border-blue-100/50">
+      <div className="flex flex-col sm:flex-row sm:items-center space-y-1 sm:space-y-0 sm:space-x-2 w-full">
         {groupedSteps.map((groupedStep, index) => (
           <React.Fragment key={groupedStep.key}>
-            <div className="flex items-center space-x-1.5">
+            <div className="flex items-center space-x-1.5 justify-center sm:justify-start">
               {getStepIcon(groupedStep.key, groupedStep.status)}
               <span className={`text-xs font-medium ${getStepColor(groupedStep.status)}`}>
                 {STEP_CATEGORIES[groupedStep.key].label}
@@ -119,7 +119,9 @@ export const ToolPipeline: React.FC<ToolPipelineProps> = ({ steps }) => {
               </span>
             </div>
             {index < groupedSteps.length - 1 && (
-              <ArrowRight className="h-3 w-3 text-gray-400" />
+              <div className="flex justify-center sm:block">
+                <ArrowRight className="h-3 w-3 text-gray-400 rotate-90 sm:rotate-0" />
+              </div>
             )}
           </React.Fragment>
         ))}

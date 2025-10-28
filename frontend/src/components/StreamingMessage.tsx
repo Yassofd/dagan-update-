@@ -1,69 +1,15 @@
-import { useEffect, useState, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 interface StreamingMessageProps {
   content: string;
-  isLoading?: boolean;
-  onStreamingComplete?: () => void;
+  isStreaming?: boolean;
 }
 
 export const StreamingMessage = ({
   content,
-  isLoading = false,
-  onStreamingComplete,
+  isStreaming = false,
 }: StreamingMessageProps) => {
-  const [displayedText, setDisplayedText] = useState("");
-  const [isTyping, setIsTyping] = useState(false);
-  const lastMessageRef = useRef<string>("");
-  const typingTimeoutRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (content !== lastMessageRef.current && !isLoading) {
-      lastMessageRef.current = content;
-
-      if (typingTimeoutRef.current) {
-        window.clearTimeout(typingTimeoutRef.current);
-      }
-
-      if (content.length > displayedText.length) {
-        setIsTyping(true);
-
-        const remainingText = content.slice(displayedText.length);
-        const chunkSize = Math.max(1, Math.floor(remainingText.length / 20));
-
-        let currentIndex = displayedText.length;
-
-        const typeNextChunk = () => {
-          if (currentIndex < content.length) {
-            const nextChunk = content.slice(0, currentIndex + chunkSize);
-            setDisplayedText(nextChunk);
-            currentIndex += chunkSize;
-
-            typingTimeoutRef.current = window.setTimeout(typeNextChunk, 50);
-          } else {
-            setDisplayedText(content);
-            setIsTyping(false);
-            onStreamingComplete?.();
-          }
-        };
-
-        typeNextChunk();
-      } else {
-        setDisplayedText(content);
-        setIsTyping(false);
-      }
-    }
-  }, [content, isLoading, displayedText.length, onStreamingComplete]);
-
-  useEffect(() => {
-    return () => {
-      if (typingTimeoutRef.current) {
-        window.clearTimeout(typingTimeoutRef.current);
-      }
-    };
-  }, []);
-
   return (
     <div className="text-xs leading-relaxed">
       <ReactMarkdown
@@ -187,9 +133,9 @@ export const StreamingMessage = ({
           ),
         }}
       >
-        {displayedText}
+        {content}
       </ReactMarkdown>
-      {isTyping && (
+      {isStreaming && (
         <span className="inline-block w-0.5 h-4 bg-accent ml-1 animate-pulse" />
       )}
     </div>

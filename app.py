@@ -662,17 +662,16 @@ async def crag_stream(
                                 accumulated_answer = msg.content
                                 break
                         
-                        # Streaming de la réponse casual
-                        chunk_size = 30  # Plus petits chunks pour réponses casual
-                        for i in range(0, len(accumulated_answer), chunk_size):
-                            chunk = accumulated_answer[i:i+chunk_size]
+                        # Streaming caractère par caractère pour réponses casual
+                        for char in accumulated_answer:
                             yield (
                                 json.dumps({
                                     "type": "message_chunk",
-                                    "content": chunk,
+                                    "content": char,
                                     "node": "casual_convo"
                                 }) + "\n"
                             )
+                            await asyncio.sleep(0.005)  # 5ms entre chaque caractère
                         
                         yield (
                             json.dumps({
@@ -753,17 +752,17 @@ async def crag_stream(
                             }) + "\n"
                         )
                         
-                        # Simuler un streaming en envoyant par chunks
-                        chunk_size = 50  # Caractères par chunk
-                        for i in range(0, len(accumulated_answer), chunk_size):
-                            chunk = accumulated_answer[i:i+chunk_size]
+                        # Streaming caractère par caractère pour une expérience fluide
+                        for char in accumulated_answer:
                             yield (
                                 json.dumps({
                                     "type": "message_chunk",
-                                    "content": chunk,
+                                    "content": char,
                                     "node": "agent_rag"
                                 }) + "\n"
                             )
+                            # Petit délai pour un streaming plus naturel
+                            await asyncio.sleep(0.005)  # 5ms entre chaque caractère
                         
                         yield (
                             json.dumps({

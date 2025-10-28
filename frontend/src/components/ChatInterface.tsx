@@ -9,8 +9,8 @@ import { SourcesFavicons, Source } from "./SourcesFavicons";
 import { CitationsPanel } from "./CitationsPanel";
 import { StreamingMessage } from "./StreamingMessage";
 import { ToolPipeline } from "./ToolPipeline";
+import { config } from "@/config";
 import avatarImage from "@/assets/avatar.svg";
-import rienImage from "@/assets/rien.svg";
 import reflexionImage from "@/assets/reflexion.svg";
 import logoImage from "@/assets/Novatekis.svg";
 import {
@@ -54,7 +54,9 @@ export const ChatInterface = () => {
   const [selectedSources, setSelectedSources] = useState<Source[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [currentToolSteps, setCurrentToolSteps] = useState<ToolStep[]>([]);
+  const [isStreaming, setIsStreaming] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
   // Restore previous conversation from localStorage
@@ -92,7 +94,14 @@ export const ChatInterface = () => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, isStreaming]);
+
+  // Auto-scroll smooth pendant le streaming
+  useEffect(() => {
+    if (isStreaming && messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, isStreaming]);
 
   const sendMessage = async (text?: string) => {
     const payload = (text ?? input).trim();
@@ -102,6 +111,7 @@ export const ChatInterface = () => {
     setMessages(prev => [...prev, userMessage]);
     setInput("");
     setIsLoading(true);
+    setIsStreaming(true);
     
     // Réinitialiser les étapes du pipeline
     setCurrentToolSteps([]);
@@ -111,7 +121,7 @@ export const ChatInterface = () => {
     let toolStepsMap = new Map<string, ToolStep>();
 
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+      const apiUrl = config.API_BASE_URL;
       const requestBody: any = { question: payload };
       if (conversationId) {
         requestBody.conversation_id = conversationId;
@@ -224,6 +234,7 @@ export const ChatInterface = () => {
               
               // Nettoyer le pipeline actuel une fois terminé
               setCurrentToolSteps([]);
+              setIsStreaming(false);
             } else if (event.type === "error") {
               throw new Error(event.message || "Server error");
             }
@@ -234,6 +245,7 @@ export const ChatInterface = () => {
       }
     } catch (error: any) {
       console.error("Error sending message:", error);
+      setIsStreaming(false);
       toast({
         title: "Erreur",
         description: error?.message || "Une erreur est survenue lors de l'envoi du message.",
@@ -274,35 +286,24 @@ export const ChatInterface = () => {
 
   // Fonction pour déterminer l'avatar à afficher selon l'état du pipeline
   const getAvatarForSteps = (steps?: ToolStep[]) => {
-    if (!steps || steps.length === 0) return rienImage;
-    
     // Si on est en train de générer (generate active ou completed), utiliser avatar.svg
-    const hasGenerateActive = steps.some(s => s.type === "generate" && (s.status === "active" || s.status === "completed"));
+    const hasGenerateActive = steps?.some(s => s.type === "generate" && (s.status === "active" || s.status === "completed"));
     if (hasGenerateActive) return avatarImage;
-    
-    // Si on a des étapes de recherche actives, utiliser reflexion.svg
-    const hasActiveSearch = steps.some(s => 
-      (s.type === "validate_domain" || s.type === "agent_rag" || s.type === "vector_search" || s.type === "web_search") 
-      && s.status === "active"
-    );
-    if (hasActiveSearch) return reflexionImage;
-    
-    // Par défaut, rien.svg
-    return rienImage;
-  };
 
-  return (
+    // Dans tous les autres cas (réflexion, recherche, terminé), utiliser reflexion.svg
+    return reflexionImage;
+  };  return (
     <>
     <Card className={`w-full shadow-2xl border-2 my-8 bg-white/95 backdrop-blur-sm transition-all duration-300 ${isPanelOpen ? 'max-w-[calc(100%-410px)] mr-[390px]' : 'max-w-[calc(100%-20px)]'}`}>
-      <CardHeader className="flex flex-row items-center justify-between px-4 py-2 border-b bg-white">
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">Développé par</span>
-          <img src={logoImage} alt="Novatekis" className="h-10 w-auto" />
+      <CardHeader className="flex flex-col sm:flex-row items-center justify-between px-4 py-2 border-b bg-white gap-2 sm:gap-0">
+        <div className="flex items-center gap-1 sm:gap-2">
+          <span className="text-xs sm:text-sm text-muted-foreground">Développé par</span>
+          <img src={logoImage} alt="Novatekis" className="h-6 sm:h-10 w-auto" />
         </div>
         <div className="flex items-center gap-2">
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="outline" size="sm" disabled={isLoading}>
+              <Button variant="outline" size="sm" disabled={isLoading} className="text-xs px-2">
                 Nouvelle conversation
               </Button>
             </AlertDialogTrigger>
@@ -310,7 +311,7 @@ export const ChatInterface = () => {
               <AlertDialogHeader>
                 <AlertDialogTitle>Nouvelle conversation</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Êtes-vous sûr de vouloir commencer une nouvelle conversation ? 
+                  Êtes-vous sûr de vouloir commencer une nouvelle conversation ?
                   L'historique actuel sera supprimé et vous n'aurez plus accès à cette conversation.
                 </AlertDialogDescription>
               </AlertDialogHeader>
@@ -387,7 +388,7 @@ export const ChatInterface = () => {
                     )}
                     
                     {message.role === "assistant" ? (
-                      <StreamingMessage content={message.content} />
+                      <StreamingMessage content={message.content} isStreaming={isStreaming && index === messages.length - 1} />
                     ) : (
                       <p className="text-xs leading-relaxed whitespace-pre-wrap">
                         {message.content}
@@ -408,7 +409,7 @@ export const ChatInterface = () => {
             ))}
             
                 {/* Afficher l'avatar de chargement seulement si pas de message assistant en cours */}
-                {isLoading && (
+                {isLoading && !messages.some(m => m.role === "assistant" && messages.indexOf(m) === messages.length - 1) && (
                   <div className="flex gap-3 justify-start animate-fade-in">
                     <div className="h-10 w-10 flex items-center justify-center flex-shrink-0">
                       <img src={getAvatarForSteps(currentToolSteps)} alt="Dagan" className="h-9 w-9" />
@@ -428,6 +429,8 @@ export const ChatInterface = () => {
                 )}
               </>
             )}
+            {/* Référence invisible pour l'auto-scroll */}
+            <div ref={messagesEndRef} />
           </div>
         </ScrollArea>
         
