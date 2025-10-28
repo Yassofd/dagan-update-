@@ -10,6 +10,7 @@ import { CitationsPanel } from "./CitationsPanel";
 import { StreamingMessage } from "./StreamingMessage";
 import { ToolPipeline } from "./ToolPipeline";
 import { config } from "@/config";
+import { trackQuestion, trackResponse, trackNewConversation, trackSuggestedQuestionClick } from "@/lib/analytics";
 import avatarImage from "@/assets/avatar.svg";
 import reflexionImage from "@/assets/reflexion.svg";
 import logoImage from "@/assets/Novatekis.svg";
@@ -106,6 +107,9 @@ export const ChatInterface = () => {
   const sendMessage = async (text?: string) => {
     const payload = (text ?? input).trim();
     if (!payload || isLoading) return;
+
+    // Track question dans Google Analytics
+    trackQuestion(payload.length, conversationId);
 
     const userMessage: Message = { role: "user", content: payload };
     setMessages(prev => [...prev, userMessage]);
@@ -228,6 +232,9 @@ export const ChatInterface = () => {
                   lastMsg.content = event.answer;
                   lastMsg.sources = collectedSources;
                   lastMsg.toolSteps = Array.from(toolStepsMap.values());
+                  
+                  // Track response dans Google Analytics
+                  trackResponse(event.answer.length, collectedSources.length, event.conversation_id);
                 }
                 return newMessages;
               });
@@ -264,11 +271,15 @@ export const ChatInterface = () => {
   };
 
   const handleSuggestionClick = (question: string) => {
+    // Track clic sur question suggérée
+    trackSuggestedQuestionClick(question);
     setInput(question);
     
   };
 
   const handleClearConversation = () => {
+    // Track nouvelle conversation
+    trackNewConversation();
     setMessages([]);
     setConversationId(null);
     try {
