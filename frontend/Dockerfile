@@ -1,5 +1,5 @@
 # Stage 1: Build
-FROM node:20-alpine AS builder
+FROM node:20-slim AS builder
 
 WORKDIR /app
 
@@ -9,6 +9,9 @@ COPY package*.json ./
 # Install dependencies (including devDependencies)
 RUN npm install
 
+# Verify vite is installed
+RUN npx vite --version
+
 # Copy source code
 COPY . .
 
@@ -16,7 +19,7 @@ COPY . .
 RUN npm run build
 
 # Stage 2: Production
-FROM nginx:alpine
+FROM nginx:1.25-alpine
 
 # Copy built assets from builder
 COPY --from=builder /app/dist /usr/share/nginx/html
