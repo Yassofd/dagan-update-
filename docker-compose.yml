@@ -1,5 +1,9 @@
+version: "3.9"
+
 services:
-  # Backend FastAPI
+  # =============================
+  # 🧠 BACKEND — FastAPI
+  # =============================
   backend:
     build:
       context: .
@@ -7,21 +11,27 @@ services:
     container_name: dagan-backend
     ports:
       - "8000:8080"
+    env_file:
+      - .env
     environment:
-      - TAVILY_API_KEY=${TAVILY_API_KEY}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - POSTGRES_CONNECTION_STRING=${POSTGRES_CONNECTION_STRING}
-      - SUPABASE_URL=${SUPABASE_URL}
-      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
-      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
-      - DOCUMENTS_COLLECTION=${DOCUMENTS_COLLECTION:-crawled_documents}
-      - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
-      - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.7}
-      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-text-embedding-3-large}
-      - EMBEDDING_DIMENSIONS=${EMBEDDING_DIMENSIONS:-2000}
+      TAVILY_API_KEY: ${TAVILY_API_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      POSTGRES_CONNECTION_STRING: ${POSTGRES_CONNECTION_STRING}
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+      SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_KEY}
+      DOCUMENTS_COLLECTION: ${DOCUMENTS_COLLECTION:-crawled_documents}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.7}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-large}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-2000}
     restart: unless-stopped
+    networks:
+      - dagan-network
 
-  # Frontend React + Nginx
+  # =============================
+  # 💻 FRONTEND — React + Nginx
+  # =============================
   frontend:
     build:
       context: ./frontend
@@ -29,9 +39,19 @@ services:
     container_name: dagan-frontend
     ports:
       - "80:80"
+    env_file:
+      - .env
     environment:
-      - VITE_API_URL=${VITE_API_URL:-http://localhost:8000}
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
     depends_on:
       - backend
     restart: unless-stopped
+    networks:
+      - dagan-network
 
+# =============================
+# 🔗 NETWORK
+# =============================
+networks:
+  dagan-network:
+    driver: bridge

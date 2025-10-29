@@ -1,31 +1,38 @@
-# Stage 1: Build
+# ================================
+# STAGE 1 - Build (Node)
+# ================================
 FROM node:20-slim AS builder
 
 WORKDIR /app
 
-# Copy package files
+# Copy dependency files first (for better caching)
 COPY package*.json ./
 
-# Install dependencies (including devDependencies)
+# Install dependencies (including devDependencies for build)
 RUN npm install
 
-# Copy source code
+# Copy application source code
 COPY . .
 
-# Build application using npx to ensure vite is found
-RUN npx vite build
+# Build the Vite app (ensures VITE_ env variables are injected)
+ARG VITE_API_URL
+ENV VITE_API_URL=$VITE_API_URL
+RUN npm run build
 
-# Stage 2: Production
-FROM nginx:1.25-alpine
 
-# Copy built assets from builder
+# ================================
+# STAGE 2 - Serve (Nginx)
+# ================================
+FROM nginx:1.25-alpine AS production
+
+# Copy built static files from the builder
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Copy nginx configuration
+# Copy custom nginx configuration (if you have one)
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Expose port
+# Expose HTTP port
 EXPOSE 80
 
-# Start nginx
+# Run nginx in the foreground
 CMD ["nginx", "-g", "daemon off;"]

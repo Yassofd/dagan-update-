@@ -73,3 +73,6 @@ test_*.json
 *.backup
 nodes/deprecated/
 archive/
+GOOGLE_ANALYTICS_SETUP.md
+.gitignore
+.gitignore
