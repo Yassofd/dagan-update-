@@ -1,3 +1,7 @@
+# Robots.txt pour Dagan - Assistant Civique Togolais
+# https://dagan.novatekis.com/robots.txt
+
+# Autoriser tous les bots principaux
 User-agent: Googlebot
 Allow: /
 
@@ -12,3 +16,20 @@ Allow: /
 
 User-agent: *
 Allow: /
+
+# Bloquer l'accès aux fichiers sensibles
+Disallow: /admin/
+Disallow: /api/private/
+Disallow: /_next/static/
+Disallow: /static/
+
+# Autoriser l'accès aux ressources publiques
+Allow: /public/
+Allow: /assets/
+Allow: /images/
+
+# Sitemap pour une meilleure indexation
+Sitemap: https://dagan.novatekis.com/sitemap.xml
+
+# Crawl-delay pour être poli avec le serveur
+Crawl-delay: 1

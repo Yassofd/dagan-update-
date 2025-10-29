@@ -305,16 +305,18 @@ export const ChatInterface = () => {
     return reflexionImage;
   };  return (
     <>
-    <Card className={`w-full shadow-2xl border-2 my-8 bg-white/95 backdrop-blur-sm transition-all duration-300 ${isPanelOpen ? 'max-w-[calc(100%-410px)] mr-[390px]' : 'max-w-[calc(100%-20px)]'}`}>
-      <CardHeader className="flex flex-col sm:flex-row items-center justify-between px-4 py-2 border-b bg-white gap-2 sm:gap-0">
+    <Card className={`w-full shadow-2xl border-2 my-4 sm:my-8 bg-white/95 backdrop-blur-sm transition-all duration-300 ${isPanelOpen ? 'max-w-[calc(100%-410px)] mr-[390px]' : 'max-w-[calc(100%-8px)] sm:max-w-[calc(100%-20px)]'}`}>
+      <CardHeader className="flex flex-col sm:flex-row items-center justify-between px-3 sm:px-4 py-2 border-b bg-white gap-2 sm:gap-0">
         <div className="flex items-center gap-1 sm:gap-2">
           <span className="text-xs sm:text-sm text-muted-foreground">Développé par</span>
-          <img src={logoImage} alt="Novatekis" className="h-6 sm:h-10 w-auto" />
+          <a href="https://novatekis.com" target="_blank" rel="noopener noreferrer" className="hover:opacity-80 transition-opacity">
+            <img src={logoImage} alt="Novatekis" className="h-5 sm:h-6 md:h-10 w-auto" />
+          </a>
         </div>
         <div className="flex items-center gap-2">
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="outline" size="sm" disabled={isLoading} className="text-xs px-2">
+              <Button variant="outline" size="sm" disabled={isLoading} className="text-xs px-2 h-8">
                 Nouvelle conversation
               </Button>
             </AlertDialogTrigger>
@@ -337,31 +339,31 @@ export const ChatInterface = () => {
         </div>
       </CardHeader>
       <CardContent className="p-0">
-        <ScrollArea className="h-[60vh] p-4" ref={scrollRef}>
-          <div className="space-y-4">
+        <ScrollArea className="h-[50vh] sm:h-[60vh] lg:h-[65vh] p-3 sm:p-4" ref={scrollRef}>
+          <div className="space-y-3 sm:space-y-4">
             {messages.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-4 space-y-3">
                 <div className="text-center space-y-2">
-                  <div className="inline-flex items-center justify-center w-28 h-28 mb-0.5">
-                    <img src={avatarImage} alt="Dagan Avatar" className="h-24 w-24" />
+                  <div className="inline-flex items-center justify-center w-20 h-20 sm:w-28 sm:h-28 mb-0.5">
+                    <img src={avatarImage} alt="Dagan Avatar" className="h-16 w-16 sm:h-24 sm:w-24" />
                   </div>
-                  <h2 className="text-lg font-bold text-foreground">Woezon, Bonjour je suis Dagan votre assistant IA</h2>
-                  <p className="text-xs text-muted-foreground max-w-md mx-auto">
+                  <h2 className="text-sm sm:text-lg font-bold text-foreground px-4">Woezon, Bonjour je suis Dagan votre assistant IA</h2>
+                  <p className="text-xs text-muted-foreground max-w-xs sm:max-w-md mx-auto px-4">
                     Assistant intelligent pour vos démarches administratives au Togo.
                   </p>
                 </div>
                 
-                <div className="w-full max-w-2xl space-y-2">
+                <div className="w-full max-w-xs sm:max-w-md md:max-w-lg lg:max-w-2xl space-y-2">
                   <div className="flex items-center gap-2 text-xs text-muted-foreground justify-center">
                     <Lightbulb className="h-3 w-3 text-warning" />
                     <span>Questions suggérées :</span>
                   </div>
-                  <div className="grid gap-2">
+                  <div className="grid gap-2 grid-cols-1 sm:grid-cols-2">
                     {SUGGESTED_QUESTIONS.map((question, idx) => (
                       <button
                         key={idx}
                         onClick={() => handleSuggestionClick(question)}
-                        className="text-left px-3 py-2 rounded-lg border-2 border-primary/20 bg-white hover:bg-highlight hover:border-accent hover:shadow-2xl hover:shadow-accent/50 hover:scale-[1.05] transition-all duration-300 text-xs text-foreground font-medium group relative overflow-hidden"
+                        className="text-left px-3 py-2 rounded-lg border-2 border-primary/20 bg-white hover:bg-highlight hover:border-accent hover:shadow-2xl hover:shadow-accent/50 hover:scale-[1.02] sm:hover:scale-[1.05] transition-all duration-300 text-xs text-foreground font-medium group relative overflow-hidden min-h-[44px] touch-manipulation"
                       >
                         <span className="relative z-10">{question}</span>
                         <div className="absolute inset-0 bg-gradient-to-r from-accent/0 via-accent/30 to-accent/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 ease-in-out"></div>
@@ -375,18 +377,18 @@ export const ChatInterface = () => {
                 {messages.map((message, index) => (
               <div
                 key={index}
-                className={`flex gap-3 ${
+                className={`flex gap-2 sm:gap-3 ${
                   message.role === "user" ? "justify-end" : "justify-start"
                 } animate-fade-in`}
               >
                 {message.role === "assistant" && (
-                  <div className="h-10 w-10 flex items-center justify-center flex-shrink-0">
-                    <img src={getAvatarForSteps(message.toolSteps)} alt="Dagan" className="h-9 w-9" />
+                  <div className="h-8 w-8 sm:h-10 sm:w-10 flex items-center justify-center flex-shrink-0">
+                    <img src={getAvatarForSteps(message.toolSteps)} alt="Dagan" className="h-7 w-7 sm:h-9 sm:w-9" />
                   </div>
                 )}
                 
                 <div
-                  className={`rounded-xl px-3 py-2 max-w-[80%] ${
+                  className={`rounded-xl px-3 py-2 max-w-[85%] sm:max-w-[80%] ${
                     message.role === "user"
                       ? "bg-[#86b7b2] text-white"
                       : "bg-white border shadow-sm"
@@ -412,8 +414,8 @@ export const ChatInterface = () => {
                 </div>
                 
                 {message.role === "user" && (
-                  <div className="h-8 w-8 rounded-full bg-primary/15 flex items-center justify-center flex-shrink-0">
-                    <User className="h-5 w-5 text-primary" />
+                  <div className="h-6 w-6 sm:h-8 sm:w-8 rounded-full bg-primary/15 flex items-center justify-center flex-shrink-0">
+                    <User className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
                   </div>
                 )}
               </div>
@@ -421,11 +423,11 @@ export const ChatInterface = () => {
             
                 {/* Afficher l'avatar de chargement seulement si pas de message assistant en cours */}
                 {isLoading && !messages.some(m => m.role === "assistant" && messages.indexOf(m) === messages.length - 1) && (
-                  <div className="flex gap-3 justify-start animate-fade-in">
-                    <div className="h-10 w-10 flex items-center justify-center flex-shrink-0">
-                      <img src={getAvatarForSteps(currentToolSteps)} alt="Dagan" className="h-9 w-9" />
+                  <div className="flex gap-2 sm:gap-3 justify-start animate-fade-in">
+                    <div className="h-8 w-8 sm:h-10 sm:w-10 flex items-center justify-center flex-shrink-0">
+                      <img src={getAvatarForSteps(currentToolSteps)} alt="Dagan" className="h-7 w-7 sm:h-9 sm:w-9" />
                     </div>
-                    <div className="rounded-xl px-3 py-2 max-w-[80%] bg-white border shadow-sm">
+                    <div className="rounded-xl px-3 py-2 max-w-[85%] sm:max-w-[80%] bg-white border shadow-sm">
                       {currentToolSteps.length > 0 ? (
                         <ToolPipeline steps={currentToolSteps} />
                       ) : (
@@ -445,23 +447,23 @@ export const ChatInterface = () => {
           </div>
         </ScrollArea>
         
-        <div className="p-3 border-t">
-          <div className="flex gap-2">
+        <div className="p-3 sm:p-4 border-t">
+          <div className="flex gap-2 sm:gap-3">
             <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyPress={handleKeyPress}
               placeholder="Posez votre question..."
               disabled={isLoading}
-              className="flex-1 text-xs"
+              className="flex-1 text-sm sm:text-xs min-h-[44px] touch-manipulation"
             />
             <Button 
               onClick={() => sendMessage()} 
               disabled={isLoading || !input.trim()}
               size="icon"
-              className="flex-shrink-0 bg-[#025253] hover:bg-[#025253]/90"
+              className="flex-shrink-0 bg-[#025253] hover:bg-[#025253]/90 h-11 w-11 sm:h-9 sm:w-9 touch-manipulation"
             >
-              <Send className="h-4 w-4" />
+              <Send className="h-4 w-4 sm:h-4 sm:w-4" />
             </Button>
           </div>
         </div>
