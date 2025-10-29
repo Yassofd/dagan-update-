@@ -139,6 +139,7 @@ jobs:
   # JOB 5 - DEPLOY (SSH vers serveur Docker)
   # =============================
   deploy:
+    name: Deploy to Server
     runs-on: ubuntu-latest
     needs: [build-backend-docker, build-frontend-docker]
     if: github.ref == 'refs/heads/main'
@@ -157,9 +158,13 @@ jobs:
       - name: Deploy to server
         run: |
           ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
-          cd /app
-          git pull origin main
+          cd ~/apps/DaganAIAgent
+          echo "Pulling latest changes..."
+          git fetch --all
+          git reset --hard origin/main
+          echo "Restarting containers..."
           docker compose down
-          docker compose build
+          docker compose build --no-cache
           docker compose up -d
-          EOF
+          docker system prune -af --volumes
+          echo "Deployment complete!"
