@@ -36,18 +36,21 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://dagan.novatekis.com:8000}  
     container_name: dagan-frontend
     ports:
       - "80:80"
     env_file:
       - .env
     environment:
-      VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+      VITE_API_URL: ${VITE_API_URL:-http://dagan.novatekis.com:8000} 
     depends_on:
       - backend
     restart: unless-stopped
     networks:
       - dagan-network
+
 
 # =============================
 # 🔗 NETWORK
