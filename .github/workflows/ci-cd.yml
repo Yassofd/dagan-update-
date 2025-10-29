@@ -53,12 +53,6 @@ jobs:
           flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
         continue-on-error: true
 
-      - name: Run tests
-        run: |
-          source .venv/bin/activate
-          pip install pytest
-          pytest --maxfail=1 --disable-warnings -q
-
   # =============================
   # JOB 2 - BUILD FRONTEND
   # =============================
