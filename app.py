@@ -827,7 +827,7 @@ async def crag_stream(
                     body.question,
                     accumulated_answer,
                     json.dumps(collected_sources),
-                    tools_used,
+                    json.dumps(tools_used),  # Convertir la liste en JSON
                     vector_searches,
                     web_searches,
                     "completed"

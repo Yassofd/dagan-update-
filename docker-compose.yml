@@ -2,6 +2,26 @@ version: "3.9"
 
 services:
   # =============================
+  # 🧠 DATABASE — PostgreSQL + pgvector
+  # =============================
+  db:
+    image: ankane/pgvector:latest
+    container_name: dagan-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: dagan
+      POSTGRES_PASSWORD: daganaipassword
+      POSTGRES_DB: dagancrag
+    volumes:
+      - ./data/db:/var/lib/postgresql/data
+    networks:
+      - dagan-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dagan -d dagancrag"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+  # =============================
   # 🧠 BACKEND — FastAPI
   # =============================
   backend:
@@ -17,9 +37,7 @@ services:
       TAVILY_API_KEY: ${TAVILY_API_KEY}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       POSTGRES_CONNECTION_STRING: ${POSTGRES_CONNECTION_STRING}
-      SUPABASE_URL: ${SUPABASE_URL}
-      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
-      SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_KEY}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       DOCUMENTS_COLLECTION: ${DOCUMENTS_COLLECTION:-crawled_documents}
       LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
       LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.7}
@@ -37,17 +55,14 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        VITE_API_URL: ${VITE_API_URL:-http://dagan.novatekis.com:8000}  
+        VITE_API_URL: ${VITE_API_URL:-https://dagan.novatekis.com/api}  
     container_name: dagan-frontend
     ports:
       - "80:80"
-      - "443:443"
-    volumes:
-      - /etc/letsencrypt:/etc/letsencrypt:ro
-    environment:
-       VITE_API_URL: ${VITE_API_URL:-http://dagan.novatekis.com:8000}
     env_file:
-      - .env 
+      - .env
+    environment:
+      VITE_API_URL: ${VITE_API_URL:-https://dagan.novatekis.com/api} 
     depends_on:
       - backend
     restart: unless-stopped

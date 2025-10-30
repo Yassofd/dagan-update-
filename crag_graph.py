@@ -65,7 +65,7 @@ def build_agent_graph(checkpointer=None):
     Le routeur décide automatiquement si c'est une conversation casual ou une question administrative.
 
     Args:
-        checkpointer: Checkpointer InMemory pour la mémoire conversationnelle
+        checkpointer: PostgresSaver pour la mémoire conversationnelle persistante
 
     Returns:
         Compiled StateGraph prêt à être invoqué
@@ -119,7 +119,7 @@ def build_agent_graph(checkpointer=None):
     # Compiler le graph avec ou sans checkpointer
     if checkpointer:
         app = workflow.compile(checkpointer=checkpointer)
-        print("✓ Graph compilé avec InMemorySaver checkpointer unifié")
+        print("✓ Graph compilé avec PostgresSaver checkpointer persistant")
     else:
         app = workflow.compile()
         print("✓ Graph compilé sans checkpointer (pas de mémoire)")
@@ -129,13 +129,13 @@ def build_agent_graph(checkpointer=None):
     return app
 
 
-# --- Graph instance globale avec InMemorySaver unifié ---
+# --- Graph instance globale avec InMemorySaver ---
 _agent_graph = None
 _unified_checkpointer = None
 
 def get_crag_graph():
     """
-    Récupère l'instance du graph Hybrid RAG avec InMemorySaver unifié (singleton pattern).
+    Récupère l'instance du graph Hybrid RAG avec InMemorySaver (singleton pattern).
 
     ⚠️ LEGACY NAME : Le nom "get_crag_graph" est conservé pour compatibilité,
     mais ce système est en réalité un **Hybrid RAG** qui gère conversations casual + admin.
@@ -144,17 +144,19 @@ def get_crag_graph():
     - Conversations informelles : réponses amicales et conversationnelles
     - Questions administratives : recherche RAG spécialisée Togo
 
+    La mémoire conversationnelle est maintenant en RAM (InMemorySaver).
+
     Returns:
-        Compiled Hybrid RAG graph avec checkpointer InMemory unifié
+        Compiled Hybrid RAG graph avec checkpointer mémoire
     """
     global _agent_graph, _unified_checkpointer
 
     if _agent_graph is None:
-        # Créer un checkpointer InMemory UNIFIÉ pour tout le système
-        # (graph + agent interne partagent le même checkpointer)
+        # Créer un InMemorySaver pour mémoire en RAM
         _unified_checkpointer = InMemorySaver()
+        
         _agent_graph = build_agent_graph(checkpointer=_unified_checkpointer)
-        print("✓ Checkpointer InMemory unifié créé (partagé graph + agent)")
+        print("✓ Checkpointer InMemorySaver créé (mémoire en RAM)")
 
     return _agent_graph
 

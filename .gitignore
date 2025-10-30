@@ -59,6 +59,18 @@ logs/
 *.sqlite
 *.sqlite3
 
+# PostgreSQL Data (local deployment)
+postgres_data/
+/postgres_data/
+*.sql
+*.dump
+
+# Backups
+/var/backups/dagan/
+backups/
+*.sql.gz
+*.backup
+
 # Temporary files
 *.tmp
 *.temp
@@ -76,3 +88,11 @@ archive/
 GOOGLE_ANALYTICS_SETUP.md
 .gitignore
 .gitignore
+
+.env
+docker-compose.yml
+/etc/letsencrypt/
+/ssl/
+/certs/
+frontend/nginx.conf
+

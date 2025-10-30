@@ -3,6 +3,11 @@ name: CI/CD Pipeline
 on:
   push:
     branches: [ main, develop ]
+    paths-ignore:
+      -".env"
+      -"docker-compose.yml"
+      - "frontend/nginx.conf"
+      - "frontend/.env"
   pull_request:
     branches: [ main ]
 
@@ -78,7 +83,7 @@ jobs:
         working-directory: ./frontend
         run: npm run build
         env:
-          VITE_API_URL: ${{ secrets.VITE_API_URL || 'http://localhost:8000' }}
+          VITE_API_URL: ${{ secrets.VITE_API_URL || 'https://dagan.novatekis.com/api' }}
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -159,12 +164,19 @@ jobs:
         run: |
           ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
           cd ~/apps/DaganAIAgent
-          echo "Pulling latest changes..."
-          git fetch --all
-          git reset --hard origin/main
-          echo "Restarting containers..."
-          docker compose down
-          docker compose build --no-cache
-          docker compose up -d
-          docker system prune -af --volumes
-          echo "Deployment complete!"
+          echo "Fetching latest code..."
+          git fetch origin main
+
+          echo "Merging new code safely..."
+          git stash
+          git merge origin/main --no-commit --no-ff || true
+          git stash pop || true
+
+          echo "Keeping local configs intact..."
+          git restore --source=HEAD -- .env docker-compose.yml || true
+
+          echo "Rebuilding containers..."
+          docker compose build backend
+          docker compose up -d backend
+
+          echo "✅ Deployment complete!"
