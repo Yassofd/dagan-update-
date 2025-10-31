@@ -304,8 +304,8 @@ export const ChatInterface = () => {
     // Dans tous les autres cas (réflexion, recherche, terminé), utiliser reflexion.svg
     return reflexionImage;
   };  return (
-    <>
-    <Card className={`w-full shadow-2xl border-2 my-4 sm:my-8 bg-white/95 backdrop-blur-sm transition-all duration-300 ${isPanelOpen ? 'max-w-[calc(100%-410px)] mr-[390px]' : 'max-w-[calc(100%-8px)] sm:max-w-[calc(100%-20px)]'}`}>
+  <>
+  <Card className={`w-full m-0 max-w-none rounded-none bg-transparent border-0 shadow-none h-full max-h-[80vh] ${isPanelOpen ? 'max-w-[calc(100%-410px)] mr-[390px]' : ''}`}>
       <CardHeader className="flex flex-col sm:flex-row items-center justify-between px-3 sm:px-4 py-2 border-b bg-white gap-2 sm:gap-0">
         <div className="flex items-center gap-1 sm:gap-2">
           <span className="text-xs sm:text-sm text-muted-foreground">Développé par</span>
@@ -338,8 +338,8 @@ export const ChatInterface = () => {
           </AlertDialog>
         </div>
       </CardHeader>
-      <CardContent className="p-0">
-        <ScrollArea className="h-[50vh] sm:h-[60vh] lg:h-[65vh] p-3 sm:p-4" ref={scrollRef}>
+  <CardContent className="p-0 bg-white h-full flex flex-col">
+    <ScrollArea className="flex-1 p-3 sm:p-4" ref={scrollRef}>
           <div className="space-y-3 sm:space-y-4">
             {messages.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-4 space-y-3">
@@ -396,9 +396,6 @@ export const ChatInterface = () => {
                 >
                   <div className="flex flex-col">
                     {/* Afficher le pipeline d'outils si disponible */}
-                    {message.role === "assistant" && message.toolSteps && message.toolSteps.length > 0 && (
-                      <ToolPipeline steps={message.toolSteps} />
-                    )}
                     
                     {message.role === "assistant" ? (
                       <StreamingMessage content={message.content} isStreaming={isStreaming && index === messages.length - 1} />
@@ -428,15 +425,11 @@ export const ChatInterface = () => {
                       <img src={getAvatarForSteps(currentToolSteps)} alt="Dagan" className="h-7 w-7 sm:h-9 sm:w-9" />
                     </div>
                     <div className="rounded-xl px-3 py-2 max-w-[85%] sm:max-w-[80%] bg-white border shadow-sm">
-                      {currentToolSteps.length > 0 ? (
-                        <ToolPipeline steps={currentToolSteps} />
-                      ) : (
-                        <div className="flex gap-1">
-                          <div className="h-2 w-2 rounded-full bg-accent/60 animate-bounce" style={{ animationDelay: "0ms" }} />
-                          <div className="h-2 w-2 rounded-full bg-accent/60 animate-bounce" style={{ animationDelay: "150ms" }} />
-                          <div className="h-2 w-2 rounded-full bg-accent/60 animate-bounce" style={{ animationDelay: "300ms" }} />
-                        </div>
-                      )}
+                      <div className="flex gap-1">
+                        <div className="h-2 w-2 rounded-full bg-accent/60 animate-bounce" style={{ animationDelay: "0ms" }} />
+                        <div className="h-2 w-2 rounded-full bg-accent/60 animate-bounce" style={{ animationDelay: "150ms" }} />
+                        <div className="h-2 w-2 rounded-full bg-accent/60 animate-bounce" style={{ animationDelay: "300ms" }} />
+                      </div>
                     </div>
                   </div>
                 )}
@@ -448,23 +441,25 @@ export const ChatInterface = () => {
         </ScrollArea>
         
         <div className="p-3 sm:p-4 border-t">
-          <div className="flex gap-2 sm:gap-3">
-            <Input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder="Posez votre question..."
-              disabled={isLoading}
-              className="flex-1 text-sm sm:text-xs min-h-[44px] touch-manipulation"
-            />
-            <Button 
-              onClick={() => sendMessage()} 
-              disabled={isLoading || !input.trim()}
-              size="icon"
-              className="flex-shrink-0 bg-[#025253] hover:bg-[#025253]/90 h-11 w-11 sm:h-9 sm:w-9 touch-manipulation"
-            >
-              <Send className="h-4 w-4 sm:h-4 sm:w-4" />
-            </Button>
+          <div className="flex justify-center">
+            <div className="relative max-w-3xl w-full">
+              <Input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyPress={handleKeyPress}
+                placeholder="Posez votre question..."
+                disabled={isLoading}
+                className="pr-12 text-sm sm:text-xs min-h-[44px] touch-manipulation rounded-full hover:border-accent transition-colors duration-300 focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:outline-none"
+              />
+              <Button 
+                onClick={() => sendMessage()} 
+                disabled={isLoading || !input.trim()}
+                size="icon"
+                className="absolute right-1 top-1/2 transform -translate-y-1/2 bg-[#025253] hover:bg-[#025253]/90 h-8 w-8 sm:h-7 sm:w-7 touch-manipulation rounded-full"
+              >
+                <Send className="h-3 w-3 sm:h-3 sm:w-3" />
+              </Button>
+            </div>
           </div>
         </div>
       </CardContent>

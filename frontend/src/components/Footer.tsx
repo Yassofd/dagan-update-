@@ -5,16 +5,16 @@ export const Footer = () => {
         <div className="text-center space-y-2">
           
           <p className="text-xs text-white/70">
-            Fait par amour par{" "}
+            Fait par{" "}
             <a 
               href="https://novatekis.com" 
               target="_blank" 
               rel="noopener noreferrer"
               className="hover:text-white transition-colors underline"
             >
-              © Novatekis
+              novatekis
             </a>
-            {" "}pour les Togolais
+            {" "}et avec AMOUR pour les Togolais
           </p>
           <p className="text-xs text-white/60 italic">
             Le portail intelligent fait par des Togolais pour des Togolais

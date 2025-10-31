@@ -15,7 +15,7 @@ const Index = () => {
           className="w-full h-full object-cover object-center"
         />
       </div>
-      <main className="flex-1 flex items-center justify-center p-4 relative z-10">
+      <main className="flex items-center justify-center p-0 relative z-10 h-[calc(100vh-230px)]">
         <ChatInterface />
       </main>
       <Footer />
