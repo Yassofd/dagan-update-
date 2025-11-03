@@ -28,7 +28,8 @@ from typing_extensions import TypedDict
 from langchain.schema import Document
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from langgraph.graph import StateGraph, START, END, MessagesState
-from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.checkpoint.postgres import PostgresSaver
+import psycopg
 
 # Import du nouveau node routeur
 from nodes.route_question import route_question
@@ -135,7 +136,7 @@ _unified_checkpointer = None
 
 def get_crag_graph():
     """
-    Récupère l'instance du graph Hybrid RAG avec InMemorySaver (singleton pattern).
+    Récupère l'instance du graph Hybrid RAG avec PostgresSaver (singleton pattern).
 
     ⚠️ LEGACY NAME : Le nom "get_crag_graph" est conservé pour compatibilité,
     mais ce système est en réalité un **Hybrid RAG** qui gère conversations casual + admin.
@@ -144,19 +145,32 @@ def get_crag_graph():
     - Conversations informelles : réponses amicales et conversationnelles
     - Questions administratives : recherche RAG spécialisée Togo
 
-    La mémoire conversationnelle est maintenant en RAM (InMemorySaver).
+    La mémoire conversationnelle est maintenant PERSISTANTE via PostgreSQL.
+    Les conversations survivent aux redémarrages du serveur.
 
     Returns:
-        Compiled Hybrid RAG graph avec checkpointer mémoire
+        Compiled Hybrid RAG graph avec checkpointer PostgreSQL persistant
     """
     global _agent_graph, _unified_checkpointer
 
     if _agent_graph is None:
-        # Créer un InMemorySaver pour mémoire en RAM
-        _unified_checkpointer = InMemorySaver()
+        # Récupérer la connection string PostgreSQL
+        postgres_connection_string = os.getenv("POSTGRES_CONNECTION_STRING")
+        
+        if not postgres_connection_string:
+            raise ValueError("POSTGRES_CONNECTION_STRING non définie dans .env")
+        
+        # Créer une connexion PostgreSQL synchrone avec autocommit
+        conn = psycopg.connect(postgres_connection_string, autocommit=True)
+        
+        # Créer PostgresSaver pour mémoire persistante
+        _unified_checkpointer = PostgresSaver(conn)
+        
+        # Setup des tables checkpoints (si pas déjà créées)
+        _unified_checkpointer.setup()
         
         _agent_graph = build_agent_graph(checkpointer=_unified_checkpointer)
-        print("✓ Checkpointer InMemorySaver créé (mémoire en RAM)")
+        print("✓ Checkpointer PostgresSaver créé (mémoire PERSISTANTE en DB)")
 
     return _agent_graph
 

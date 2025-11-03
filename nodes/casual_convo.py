@@ -1,5 +1,5 @@
-"""
-Node CASUAL_CONVO - Gestion des conversations informelles et réponses amicales
+﻿"""
+Node CASUAL_CONVO - Gestion des conversations informelles
 """
 
 import os
@@ -8,16 +8,6 @@ from openai import OpenAI
 from langchain_core.messages import AIMessage
 
 def casual_convo(state: Dict) -> Dict:
-    """
-    Génère une réponse amicale et conversationnelle pour les questions informelles.
-
-    Args:
-        state (Dict): État contenant les messages
-
-    Returns:
-        Dict avec la réponse ajoutée aux messages
-    """
-
     messages = state.get("messages", [])
     if not messages:
         return {"messages": [AIMessage(content="Bonjour ! Je suis Dagan, votre assistant. Comment puis-je vous aider ?")]}
@@ -25,50 +15,43 @@ def casual_convo(state: Dict) -> Dict:
     last_message = messages[-1]
     question = last_message.content if hasattr(last_message, 'content') else str(last_message)
 
-    print(f"💬 Casual conversation: '{question[:50]}...'")
+    print(f"Casual conversation: '{question[:50]}...'")
+    print(f"Historique: {len(messages)} messages")
 
-    # Configuration LLM
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     llm_model = os.getenv("LLM_MODEL", "gpt-4o-mini")
 
-    # Prompt pour réponses casual
-    casual_prompt = f"""Tu es Dagan, un assistant IA amical et sympathique spécialisé dans l'aide administrative togolaise.
+    conversation_history = []
+    for msg in messages[:-1]:
+        role = "user" if msg.type == "human" else "assistant"
+        content = msg.content if hasattr(msg, 'content') else str(msg)
+        conversation_history.append({"role": role, "content": content})
 
-L'utilisateur te pose une question informelle : "{question}"
+    casual_system_prompt = "Tu es Dagan, un assistant IA amical et sympathique specialise dans l'aide administrative togolaise. Tu dois te souvenir des informations que l'utilisateur t'a donnees precedemment dans la conversation (comme son nom, sa situation, ses etudes, etc.)"
 
-Réponds de manière :
-- Amicale et sympathique 😊
-- Concise mais engageante
-- En français
-- En gardant le contexte togolais quand approprié
-- En invitant à poser des questions administratives si l'occasion se présente
-
-Si c'est une salutation, réponds chaleureusement exemple :"éééh aloba gné léké ofon nam maa? qui signifie "Bonjour, comment te portes tu aujourd'hui?" en français, tu peux intervertir "aloba" avec "kpésséa" ou encore "tchalé" ou encore "Amé gné".
-Si tu veux suggerer de toujours te poser des questions au besoin , tu pourras dire par exemple "Né ogba hiyen'dé mé lé lo !" qui signifie "N'hésite pas à me demander si besoin !" en français.
-Pour dire merci, tu peux dire "Akpé" et pour dire "Au revoir" ou "a bientot" c'est "éyizandé".
-Si c'est une question personnelle sur toi, présente-toi brièvement.
-Si c'est une conversation générale, sois engageant mais redirige vers ton domaine d'expertise.
-
-Réponse :"""
+    casual_user_prompt = f"L'utilisateur te pose : {question}\n\nReponds en restant amical et en tenant compte de tout l'historique de la conversation."
 
     try:
+        llm_messages = [
+            {"role": "system", "content": casual_system_prompt},
+            *conversation_history,
+            {"role": "user", "content": casual_user_prompt}
+        ]
+        
         response = client.chat.completions.create(
             model=llm_model,
             temperature=0.7,  
-            max_tokens=150,
-            messages=[{"role": "user", "content": casual_prompt}]
+            max_tokens=200,
+            messages=llm_messages
         )
 
         answer = response.choices[0].message.content.strip()
+        print(f"Casual response: '{answer[:50]}...'")
 
-        print(f"💬 Casual response: '{answer[:50]}...'")
-
-        # Ajouter la réponse aux messages
         new_messages = messages + [AIMessage(content=answer)]
-
         return {"messages": new_messages}
 
     except Exception as e:
-        print(f"⚠️ Erreur casual response: {e}")
-        fallback = "Désolé, je n'ai pas bien compris. Je suis Dagan, votre assistant pour les démarches administratives au Togo. Comment puis-je vous aider ?"
+        print(f"Erreur casual response: {e}")
+        fallback = "Desole, je n'ai pas bien compris. Je suis Dagan, votre assistant pour les demarches administratives au Togo. Comment puis-je vous aider ?"
         return {"messages": messages + [AIMessage(content=fallback)]}

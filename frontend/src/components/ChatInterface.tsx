@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+﻿import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,7 +9,7 @@ import { SourcesFavicons, Source } from "./SourcesFavicons";
 import { CitationsPanel } from "./CitationsPanel";
 import { StreamingMessage } from "./StreamingMessage";
 import { ToolPipeline } from "./ToolPipeline";
-import { config } from "@/config";
+import { useHybridRAG } from "@/hooks/useHybridRAG";
 import { trackQuestion, trackResponse, trackNewConversation, trackSuggestedQuestionClick } from "@/lib/analytics";
 import avatarImage from "@/assets/avatar.svg";
 import reflexionImage from "@/assets/reflexion.svg";
@@ -33,13 +33,6 @@ interface ToolStep {
   details?: string;
 }
 
-interface Message {
-  role: "user" | "assistant";
-  content: string;
-  sources?: Source[];
-  toolSteps?: ToolStep[];
-}
-
 const SUGGESTED_QUESTIONS = [
   "Comment renouveler mon passeport ?",
   "Comment obtenir un duplicata d'un certificat de nationalité ?",
@@ -48,61 +41,29 @@ const SUGGESTED_QUESTIONS = [
 ];
 
 export const ChatInterface = () => {
-  const [messages, setMessages] = useState<Message[]>([]);
+  // Utiliser le hook useHybridRAG pour la gestion des messages et du streaming
+  const { messages, submitQuery, resetConversation, isLoading, conversationId, currentStatus } = useHybridRAG();
+  
   const [input, setInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [selectedSources, setSelectedSources] = useState<Source[]>([]);
-  const [conversationId, setConversationId] = useState<string | null>(null);
-  const [currentToolSteps, setCurrentToolSteps] = useState<ToolStep[]>([]);
-  const [isStreaming, setIsStreaming] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
-  // Restore previous conversation from localStorage
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem("chatMessages");
-      const storedConvId = localStorage.getItem("conversationId");
-      if (stored) {
-        const parsed: Message[] = JSON.parse(stored);
-        if (Array.isArray(parsed)) {
-          setMessages(parsed);
-        }
-      }
-      if (storedConvId) {
-        setConversationId(storedConvId);
-      }
-    } catch (e) {
-      // ignore
-    }
-  }, []);
-
-  // Persist conversation locally on changes
-  useEffect(() => {
-    try {
-      localStorage.setItem("chatMessages", JSON.stringify(messages));
-      if (conversationId) {
-        localStorage.setItem("conversationId", conversationId);
-      }
-    } catch (e) {
-      // ignore
-    }
-  }, [messages, conversationId]);
-
+  // Auto-scroll quand nouveaux messages
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, isStreaming]);
+  }, [messages]);
 
-  // Auto-scroll smooth pendant le streaming
+  // Auto-scroll smooth pendant le chargement
   useEffect(() => {
-    if (isStreaming && messagesEndRef.current) {
+    if (isLoading && messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages, isStreaming]);
+  }, [messages, isLoading]);
 
   const sendMessage = async (text?: string) => {
     const payload = (text ?? input).trim();
@@ -111,155 +72,20 @@ export const ChatInterface = () => {
     // Track question dans Google Analytics
     trackQuestion(payload.length, conversationId);
 
-    const userMessage: Message = { role: "user", content: payload };
-    setMessages(prev => [...prev, userMessage]);
     setInput("");
-    setIsLoading(true);
-    setIsStreaming(true);
     
-    // Réinitialiser les étapes du pipeline
-    setCurrentToolSteps([]);
-
-    let accumulatedContent = "";
-    let collectedSources: Source[] = [];
-    let toolStepsMap = new Map<string, ToolStep>();
-
     try {
-      const apiUrl = config.API_BASE_URL;
-      const requestBody: any = { question: payload };
-      if (conversationId) {
-        requestBody.conversation_id = conversationId;
-      }
+      // Utiliser le hook pour envoyer la question
+      await submitQuery(payload);
       
-      const response = await fetch(`${apiUrl}/crag/stream`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(requestBody),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-
-      if (!reader) {
-        throw new Error("No response body");
-      }
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value);
-        const lines = chunk.split("\n");
-
-        for (const line of lines) {
-          if (!line.trim()) continue;
-
-          try {
-            const event = JSON.parse(line);
-
-            // Gérer les événements de status pour le pipeline
-            if (event.type === "status") {
-              const stepType = event.step as ToolStep["type"];
-              
-              // Marquer l'étape précédente comme completed si elle existe
-              toolStepsMap.forEach((step) => {
-                if (step.status === "active") {
-                  step.status = "completed";
-                }
-              });
-              
-              // Ajouter ou mettre à jour l'étape actuelle
-              if (!toolStepsMap.has(stepType)) {
-                toolStepsMap.set(stepType, {
-                  type: stepType,
-                  status: "active",
-                  count: 1,
-                  details: event.message
-                });
-              } else {
-                const existingStep = toolStepsMap.get(stepType)!;
-                existingStep.status = "active";
-                existingStep.count = (existingStep.count || 0) + 1;
-              }
-              
-              // Mettre à jour le state avec les étapes en ordre
-              const orderedSteps = Array.from(toolStepsMap.values());
-              setCurrentToolSteps([...orderedSteps]);
-            }
-            
-            if (event.type === "message_chunk") {
-              accumulatedContent += event.content;
-              setMessages(prev => {
-                const newMessages = [...prev];
-                const lastMsg = newMessages[newMessages.length - 1];
-                
-                if (lastMsg && lastMsg.role === "assistant") {
-                  lastMsg.content = accumulatedContent;
-                  lastMsg.toolSteps = Array.from(toolStepsMap.values());
-                } else {
-                  newMessages.push({
-                    role: "assistant",
-                    content: accumulatedContent,
-                    sources: [],
-                    toolSteps: Array.from(toolStepsMap.values())
-                  });
-                }
-                return newMessages;
-              });
-            } else if (event.type === "complete") {
-              collectedSources = event.sources || [];
-              
-              // Marquer toutes les étapes comme completed
-              toolStepsMap.forEach((step) => {
-                step.status = "completed";
-              });
-              
-              // Capture and persist conversation_id from backend
-              if (event.conversation_id) {
-                setConversationId(event.conversation_id);
-              }
-              
-              setMessages(prev => {
-                const newMessages = [...prev];
-                const lastMsg = newMessages[newMessages.length - 1];
-                if (lastMsg && lastMsg.role === "assistant") {
-                  lastMsg.content = event.answer;
-                  lastMsg.sources = collectedSources;
-                  lastMsg.toolSteps = Array.from(toolStepsMap.values());
-                  
-                  // Track response dans Google Analytics
-                  trackResponse(event.answer.length, collectedSources.length, event.conversation_id);
-                }
-                return newMessages;
-              });
-              
-              // Nettoyer le pipeline actuel une fois terminé
-              setCurrentToolSteps([]);
-              setIsStreaming(false);
-            } else if (event.type === "error") {
-              throw new Error(event.message || "Server error");
-            }
-          } catch (parseError) {
-            console.warn("Failed to parse event:", line);
-          }
-        }
-      }
+      // Track response (sera appelé après réponse complète dans le hook)
+      // On pourrait ajouter un callback au hook si besoin
     } catch (error: any) {
-      console.error("Error sending message:", error);
-      setIsStreaming(false);
       toast({
         title: "Erreur",
         description: error?.message || "Une erreur est survenue lors de l'envoi du message.",
         variant: "destructive"
       });
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -274,20 +100,14 @@ export const ChatInterface = () => {
     // Track clic sur question suggérée
     trackSuggestedQuestionClick(question);
     setInput(question);
-    
   };
 
   const handleClearConversation = () => {
     // Track nouvelle conversation
     trackNewConversation();
-    setMessages([]);
-    setConversationId(null);
-    try {
-      localStorage.removeItem("chatMessages");
-      localStorage.removeItem("conversationId");
-    } catch (e) {
-
-    }
+    
+    // Utiliser la fonction du hook
+    resetConversation();
   };
 
   const handleSourceClick = (sources: Source[]) => {
@@ -295,13 +115,20 @@ export const ChatInterface = () => {
     setIsPanelOpen(true);
   };
 
-  // Fonction pour déterminer l'avatar à afficher selon l'état du pipeline
-  const getAvatarForSteps = (steps?: ToolStep[]) => {
-    // Si on est en train de générer (generate active ou completed), utiliser avatar.svg
-    const hasGenerateActive = steps?.some(s => s.type === "generate" && (s.status === "active" || s.status === "completed"));
-    if (hasGenerateActive) return avatarImage;
-
-    // Dans tous les autres cas (réflexion, recherche, terminé), utiliser reflexion.svg
+  // Fonction pour déterminer l'avatar à afficher selon l'état
+  const getAvatarForStatus = (status?: { step: string; message: string } | null, isCurrentMessage: boolean = false) => {
+    // Si c'est un ancien message (terminé), toujours avatar.svg
+    if (!isCurrentMessage) {
+      return avatarImage;
+    }
+    
+    // Pour le message en cours de génération :
+    // Si on est à l'étape "generate" OU si plus de status (terminé), utiliser avatar.svg
+    if (!status || status.step === "generate" || status.step === "agent_rag" || status.step === "casual_convo") {
+      return avatarImage;
+    }
+    
+    // Pour les autres étapes (route_question, vector_search, web_search), utiliser reflexion.svg
     return reflexionImage;
   };  return (
   <>
@@ -383,7 +210,14 @@ export const ChatInterface = () => {
               >
                 {message.role === "assistant" && (
                   <div className="h-8 w-8 sm:h-10 sm:w-10 flex items-center justify-center flex-shrink-0">
-                    <img src={getAvatarForSteps(message.toolSteps)} alt="Dagan" className="h-7 w-7 sm:h-9 sm:w-9" />
+                    <img 
+                      src={getAvatarForStatus(
+                        index === messages.length - 1 ? currentStatus : null, 
+                        index === messages.length - 1 && isLoading
+                      )} 
+                      alt="Dagan" 
+                      className="h-7 w-7 sm:h-9 sm:w-9" 
+                    />
                   </div>
                 )}
                 
@@ -395,17 +229,28 @@ export const ChatInterface = () => {
                   }`}
                 >
                   <div className="flex flex-col">
-                    {/* Afficher le pipeline d'outils si disponible */}
-                    
                     {message.role === "assistant" ? (
-                      <StreamingMessage content={message.content} isStreaming={isStreaming && index === messages.length - 1} />
+                      <>
+                        {/* Afficher l'animation de 3 points si message vide et en cours de chargement */}
+                        {isLoading && index === messages.length - 1 && !message.content && (
+                          <div className="flex gap-1">
+                            <div className="h-2 w-2 rounded-full bg-accent/60 animate-bounce" style={{ animationDelay: "0ms" }} />
+                            <div className="h-2 w-2 rounded-full bg-accent/60 animate-bounce" style={{ animationDelay: "150ms" }} />
+                            <div className="h-2 w-2 rounded-full bg-accent/60 animate-bounce" style={{ animationDelay: "300ms" }} />
+                          </div>
+                        )}
+                        {/* Afficher le contenu du message */}
+                        {message.content && (
+                          <StreamingMessage content={message.content} isStreaming={isLoading && index === messages.length - 1} />
+                        )}
+                      </>
                     ) : (
                       <p className="text-xs leading-relaxed whitespace-pre-wrap">
                         {message.content}
                       </p>
                     )}
                     {message.role === "assistant" && message.sources && message.sources.length > 0 && (
-                      <SourcesFavicons sources={message.sources} onSourceClick={handleSourceClick} />
+                      <SourcesFavicons sources={message.sources as any} onSourceClick={handleSourceClick} />
                     )}
                   </div>
                 </div>
@@ -422,7 +267,7 @@ export const ChatInterface = () => {
                 {isLoading && !messages.some(m => m.role === "assistant" && messages.indexOf(m) === messages.length - 1) && (
                   <div className="flex gap-2 sm:gap-3 justify-start animate-fade-in">
                     <div className="h-8 w-8 sm:h-10 sm:w-10 flex items-center justify-center flex-shrink-0">
-                      <img src={getAvatarForSteps(currentToolSteps)} alt="Dagan" className="h-7 w-7 sm:h-9 sm:w-9" />
+                      <img src={getAvatarForStatus(currentStatus, true)} alt="Dagan" className="h-7 w-7 sm:h-9 sm:w-9" />
                     </div>
                     <div className="rounded-xl px-3 py-2 max-w-[85%] sm:max-w-[80%] bg-white border shadow-sm">
                       <div className="flex gap-1">

@@ -33,12 +33,12 @@ from datetime import datetime
 
 from crag_graph import get_crag_graph
 
-# Configuration PostgreSQL pour PGVector uniquement
+# Configuration PostgreSQL pour PGVector
 postgres_connection_string = os.getenv("POSTGRES_CONNECTION_STRING")
-
 
 app = FastAPI(title="Dagan Agent RAG API", version="2.0.0")
 
+# Middleware CORS complet
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -46,7 +46,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 @app.get("/health")
 async def health_check():
     return {"status": "everything is ok"}
@@ -431,8 +430,151 @@ async def vectorize_url(
         raise HTTPException(status_code=500, detail=f"Error vectorizing URL: {str(e)}")
 
 
+# ============================================================================
+# ENDPOINTS DE GESTION DES CONVERSATIONS
+# ============================================================================
+
+@app.get("/conversations")
+async def list_conversations(limit: int = 20, offset: int = 0):
+    """
+    Liste toutes les conversations avec pagination
+    
+    Query params:
+        limit: Nombre max de conversations (défaut: 20)
+        offset: Offset pour pagination (défaut: 0)
+    
+    Returns:
+        Liste des conversations avec metadata
+    """
+    try:
+        conn = psycopg2.connect(postgres_connection_string)
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT 
+                thread_id, 
+                title, 
+                created_at, 
+                updated_at, 
+                message_count,
+                last_message_preview
+            FROM conversation_metadata
+            ORDER BY updated_at DESC
+            LIMIT %s OFFSET %s
+        """, (limit, offset))
+        
+        conversations = []
+        for row in cursor.fetchall():
+            conversations.append({
+                "thread_id": row[0],
+                "title": row[1],
+                "created_at": row[2].isoformat() if row[2] else None,
+                "updated_at": row[3].isoformat() if row[3] else None,
+                "message_count": row[4],
+                "last_message_preview": row[5]
+            })
+        
+        cursor.close()
+        conn.close()
+        
+        return {"conversations": conversations, "total": len(conversations)}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur liste conversations: {str(e)}")
 
 
+@app.get("/conversations/{thread_id}")
+async def get_conversation(thread_id: str):
+    """
+    Récupère les détails d'une conversation spécifique
+    
+    Args:
+        thread_id: ID de la conversation
+    
+    Returns:
+        Historique complet des messages
+    """
+    try:
+        agent_graph = get_crag_graph()
+        
+        # Récupérer le dernier checkpoint via le checkpointer
+        config = {"configurable": {"thread_id": thread_id}}
+        
+        # Utiliser get_state pour récupérer l'état complet
+        state_snapshot = agent_graph.get_state(config)
+        
+        if not state_snapshot or not state_snapshot.values:
+            raise HTTPException(status_code=404, detail="Conversation non trouvée")
+        
+        # Extraire les messages
+        messages = state_snapshot.values.get("messages", [])
+        
+        formatted_messages = []
+        for msg in messages:
+            formatted_messages.append({
+                "role": "user" if msg.type == "human" else "assistant",
+                "content": msg.content,
+                "additional_kwargs": getattr(msg, "additional_kwargs", {})
+            })
+        
+        return {
+            "thread_id": thread_id,
+            "messages": formatted_messages,
+            "message_count": len(formatted_messages)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur récupération conversation: {str(e)}")
+
+
+@app.delete("/conversations/{thread_id}")
+async def delete_conversation(thread_id: str):
+    """
+    Supprime une conversation et toutes ses données
+    
+    Args:
+        thread_id: ID de la conversation à supprimer
+    
+    Returns:
+        Message de confirmation
+    """
+    try:
+        conn = psycopg2.connect(postgres_connection_string)
+        cursor = conn.cursor()
+        
+        # Supprimer des tables checkpoints
+        cursor.execute("DELETE FROM checkpoints WHERE thread_id = %s", (thread_id,))
+        deleted_checkpoints = cursor.rowcount
+        
+        cursor.execute("DELETE FROM checkpoint_writes WHERE thread_id = %s", (thread_id,))
+        deleted_writes = cursor.rowcount
+        
+        cursor.execute("DELETE FROM conversation_metadata WHERE thread_id = %s", (thread_id,))
+        deleted_metadata = cursor.rowcount
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return {
+            "success": True,
+            "message": f"Conversation {thread_id} supprimée",
+            "deleted": {
+                "checkpoints": deleted_checkpoints,
+                "writes": deleted_writes,
+                "metadata": deleted_metadata
+            }
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur suppression conversation: {str(e)}")
+
+
+# ============================================================================
+# ENDPOINTS CRAG/RAG
+# ============================================================================
 
 @app.post("/crag/query")
 async def crag_query(
@@ -579,22 +721,60 @@ async def crag_stream(
             # Récupérer le graph Agent RAG
             agent_graph = get_crag_graph()
             
-            # Préparer l'état initial avec MessagesState
+            # ✅ IMPORTANT : Récupérer l'historique existant du checkpoint
+            config = {"configurable": {"thread_id": thread_id}}
+            state_snapshot = agent_graph.get_state(config)
+            
+            # Charger les anciens messages s'il y en a
+            old_messages = []
+            if state_snapshot and state_snapshot.values:
+                old_messages = state_snapshot.values.get("messages", [])
+                print(f"✓ Historique chargé : {len(old_messages)} messages précédents")
+            else:
+                print(f"✓ Nouvelle conversation créée")
+            
+            # Ajouter le nouveau message à l'historique
+            new_message = HumanMessage(content=body.question)
+            all_messages = old_messages + [new_message]
+            
+            # Préparer l'état initial avec l'historique COMPLET
             initial_state = {
-                "messages": [HumanMessage(content=body.question)],
+                "messages": all_messages,  # ← Historique + nouveau message
                 "question": body.question,
                 "domain_validated": False
             }
-            
-            # Configuration pour le checkpointer
-            config = {"configurable": {"thread_id": thread_id}}
             
             # Variables pour accumuler la réponse et les sources
             accumulated_answer = ""
             collected_sources = []
             
-            # Streamer le workflow Agent RAG
-            async for event in agent_graph.astream(initial_state, config):
+            # Streamer le workflow Agent RAG en mode SYNCHRONE (PostgresSaver n'est pas async)
+            # Utiliser stream() au lieu de astream() et wrapper dans to_thread
+            def sync_stream():
+                """Fonction synchrone pour streamer le graph"""
+                for event in agent_graph.stream(initial_state, config):
+                    yield event
+            
+            # Exécuter le stream synchrone dans un thread séparé
+            import asyncio
+            from concurrent.futures import ThreadPoolExecutor
+            
+            executor = ThreadPoolExecutor(max_workers=1)
+            loop = asyncio.get_event_loop()
+            
+            # Wrapper pour itérer sur le stream synchrone de manière async
+            async def async_event_iterator():
+                stream_gen = sync_stream()
+                while True:
+                    try:
+                        event = await loop.run_in_executor(executor, next, stream_gen, None)
+                        if event is None:
+                            break
+                        yield event
+                    except StopIteration:
+                        break
+            
+            async for event in async_event_iterator():
                 # event est un dict avec une clé = nom du node
                 # et valeur = état retourné par ce node
                 
@@ -838,6 +1018,44 @@ async def crag_stream(
                 conn.close()
                 
                 print(f"💾 Conversation {thread_id} enregistrée dans PostgreSQL")
+                
+                # ─────────────────────────────────────────────────────────
+                # LOGGING METADATA CONVERSATION (pour UI/gestion)
+                # ─────────────────────────────────────────────────────────
+                try:
+                    conn = psycopg2.connect(postgres_connection_string)
+                    cursor = conn.cursor()
+                    
+                    # Générer titre automatique (premiers 50 caractères de la question)
+                    title = body.question[:50] + "..." if len(body.question) > 50 else body.question
+                    
+                    # Prévisualisation de la dernière réponse (premiers 100 caractères)
+                    last_message_preview = accumulated_answer[:100] + "..." if len(accumulated_answer) > 100 else accumulated_answer
+                    
+                    # Upsert dans conversation_metadata
+                    cursor.execute("""
+                        INSERT INTO conversation_metadata 
+                            (thread_id, title, message_count, last_message_preview, updated_at)
+                        VALUES (%s, %s, %s, %s, NOW())
+                        ON CONFLICT (thread_id) DO UPDATE SET
+                            message_count = conversation_metadata.message_count + 2,
+                            last_message_preview = EXCLUDED.last_message_preview,
+                            updated_at = NOW()
+                    """, (
+                        thread_id,
+                        title,
+                        2,  # Question + réponse = 2 messages
+                        last_message_preview
+                    ))
+                    
+                    conn.commit()
+                    cursor.close()
+                    conn.close()
+                    
+                    print(f"💾 Metadata conversation {thread_id} enregistrée")
+                    
+                except Exception as metadata_error:
+                    print(f"⚠️ Erreur logging metadata: {str(metadata_error)}")
                 
             except Exception as log_error:
                 print(f"⚠️ Erreur lors de l'enregistrement de la conversation: {str(log_error)}")
