@@ -8,7 +8,9 @@ Les anciens nodes CRAG ont été supprimés (commentés dans leurs fichiers resp
 
 # Nodes actifs (architecture Agent RAG)
 from .agent_rag import agent_rag
+from .classify_location import classify_location
 
 __all__ = [
-    "agent_rag"
+    "agent_rag",
+    "classify_location"
 ]

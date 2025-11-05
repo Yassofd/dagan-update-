@@ -37,6 +37,9 @@ from nodes.route_question import route_question
 # Import du node casual conversation
 from nodes.casual_convo import casual_convo
 
+# Import du noeud de classification de localisation
+from nodes.classify_location import classify_location
+
 # Import du nouveau node agent
 from nodes.agent_rag import agent_rag
 
@@ -53,8 +56,10 @@ class GraphState(MessagesState):
     Attributes:
         messages: Historique des messages (géré automatiquement par MessagesState)
         question_type: Type de question détecté ("casual" ou "admin")
+        user_location: Localisation de l'utilisateur ("resident" ou "diaspora")
     """
     question_type: str
+    user_location: str
 
 
 # --- Build Hybrid RAG Graph ---
@@ -79,43 +84,47 @@ def build_agent_graph(checkpointer=None):
     # Ajouter les nodes (architecture hybride)
     workflow.add_node("route_question", route_question)
     workflow.add_node("casual_convo", casual_convo)
+    workflow.add_node("classify_location", classify_location)
     workflow.add_node("agent_rag", agent_rag)
 
-    print("✓ Nodes ajoutés: route_question, casual_convo, agent_rag")
+    print("✓ Nodes ajoutés: route_question, casual_convo, classify_location, agent_rag")
 
     # Fonction pour router après classification
-    def route_after_question_type(state: GraphState) -> Literal["casual_convo", "agent_rag"]:
+    def route_after_question_type(state: GraphState) -> Literal["casual_convo", "classify_location"]:
         """
         Route vers casual_convo pour conversations informelles,
-        vers agent_rag pour questions administratives.
+        vers classify_location (puis agent_rag) pour questions administratives.
         """
         question_type = state.get("question_type", "admin")
         if question_type == "casual":
             return "casual_convo"
         else:
-            return "agent_rag"
+            return "classify_location"
 
     # Définir les edges (architecture en Y)
     # START → route_question
     workflow.add_edge(START, "route_question")
 
-    # route_question → [casual_convo OU agent_rag]
+    # route_question → [casual_convo OU classify_location]
     workflow.add_conditional_edges(
         "route_question",
         route_after_question_type,
         {
             "casual_convo": "casual_convo",
-            "agent_rag": "agent_rag"
+            "classify_location": "classify_location"
         }
     )
 
     # casual_convo → END
     workflow.add_edge("casual_convo", END)
 
+    # classify_location → agent_rag (toujours call agent_rag après classification)
+    workflow.add_edge("classify_location", "agent_rag")
+
     # agent_rag → END
     workflow.add_edge("agent_rag", END)
 
-    print("✓ Edges configurés : START → route_question → [casual_convo | agent_rag] → END")
+    print("✓ Edges configurés : START → route_question → [casual_convo | classify_location → agent_rag] → END")
 
     # Compiler le graph avec ou sans checkpointer
     if checkpointer:

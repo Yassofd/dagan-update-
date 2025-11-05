@@ -5,6 +5,7 @@ Utilise initialize_agent (stable et compatible)
 """
 
 import os
+import json
 from typing import Dict, List, Optional, Any
 from langchain.llms.base import LLM
 from langchain.agents import initialize_agent, AgentType, Tool
@@ -13,13 +14,12 @@ from langchain.callbacks.manager import CallbackManagerForLLMRun
 from openai import OpenAI
 
 # Import tools
-from tools import vector_search_tool, web_search_tool, web_crawl_tool
+from tools import vector_search_tool, web_search_tool, web_crawl_tool, web_search_tool_resident, web_search_tool_diaspora
 
 # Import du prompt centralisé
 from prompt import SYSTEM_PROMPT_TEMPLATE
 
 
-# Wrapper LLM personnalisé pour éviter langchain_openai
 class OpenAILLM(LLM):
     """Wrapper OpenAI LLM compatible avec LangChain agents"""
     
@@ -54,6 +54,167 @@ class OpenAILLM(LLM):
         return response.choices[0].message.content
 
 
+def reformulate_query_with_location(question: str, user_location: str) -> str:
+    """
+    Reformule la question utilisateur en 2-5 mots-clés optimisés en tenant compte de la localisation.
+    
+    **RESIDENT** (au Togo):
+    - Ajouter "Togo" ou "site:.gouv.tg"
+    - Focus sur procédures sur place
+    - Ex: "Comment obtenir une carte?" → "carte nationale biométrique Togo"
+    
+    **DIASPORA** (à l'étranger):
+    - Ajouter le pays de résidence détecté + "consulat" ou "diaspora"
+    - Focus sur services consulaires
+    - Ex: "Renouveler mon passeport" en France → "passeport renouvellement consulat Togo France"
+    
+    Args:
+        question: Question brute de l'utilisateur
+        user_location: "resident" ou "diaspora"
+    
+    Returns:
+        Requête optimisée en 2-5 mots-clés
+    """
+    
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        print(f"⚠️ Reformulation fallback: pas d'API key")
+        return question
+    
+    try:
+        client = OpenAI(api_key=api_key)
+        
+        # Prompt adapté selon le contexte
+        if user_location == "diaspora":
+            location_context = """L'utilisateur est en DIASPORA (hors du Togo, à l'étranger).
+- Détecte le pays mentionné (France, Belgique, Canada, États-Unis, etc.)
+- Ajoute ce pays + "consulat" ou "diaspora" dans les mots-clés
+- Focus: services consulaires, ambassades, procédures internationales"""
+        else:
+            location_context = """L'utilisateur est RESIDENT (AU TOGO).
+- Ajoute "Togo" ou "site:.gouv.tg" systématiquement
+- Focus: procédures sur place, services publics locaux"""
+        
+        reformulation_prompt = f"""Tu es un optimiseur de requête pour Tavily Search.
+Reformule cette question en mots-clés optimisés (2-5 mots MAX).
+
+{location_context}
+
+**RÈGLES**:
+1. 2-5 mots-clés MAXIMUM
+2. Mots importants EN PREMIER (document, action, localisation)
+3. Ordre de priorité: [action/document] [détails] [localisation]
+4. Pas de ponctuation ni articles
+
+**EXEMPLES**:
+- Resident: "Comment obtenir une carte d'identité?" → "carte nationale biométrique Togo"
+- Resident: "Procédure pour le passeport?" → "passeport ordinaire coût délai site:.gouv.tg"
+- Diaspora (France): "Renouveler mon passeport" → "passeport renouvellement consulat Togo France"
+- Diaspora (USA): "Je veux un acte de naissance" → "acte naissance diaspora consulat Togo États-Unis"
+
+Question: "{question}"
+
+Réponds UNIQUEMENT par les mots-clés reformulés (rien d'autre)."""
+        
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            temperature=0.2,
+            messages=[{"role": "user", "content": reformulation_prompt}],
+            max_tokens=50
+        )
+        
+        reformulated = response.choices[0].message.content.strip()
+        print(f"  🔄 Reformulation: '{question[:40]}...' → '{reformulated}'")
+        
+        return reformulated
+    
+    except Exception as e:
+        print(f"⚠️ Reformulation LLM failed: {e}, fallback: {question}")
+        return question
+
+
+def re_classify_location_with_context(messages: List, current_user_location: str) -> str:
+    """
+    RE-CLASSIFIE la localisation en analysant TOUTE la conversation.
+    Permet à l'utilisateur d'itérer en changeant de contexte au fil de la discussion.
+    
+    Logique :
+    - Analyse le dernier message utilisateur ET tout l'historique
+    - Si mention d'un pays étranger → "diaspora"
+    - Si retour à Togo ou pas de mention → garde le contexte actuel ou revient à "resident"
+    - Permet des itérations : Q1 "passeport" (resident) → Q2 "et en France?" (diaspora) → Q3 "délais?" (reste diaspora)
+    
+    Args:
+        messages: Liste de tous les messages
+        current_user_location: Localisation actuelle ("resident" ou "diaspora")
+    
+    Returns:
+        Nouvelle localisation reclassifiée
+    """
+    
+    from langchain_core.messages import HumanMessage as LangchainHumanMessage
+    
+    # Extraire tous les messages utilisateur
+    user_messages = [msg for msg in messages if isinstance(msg, LangchainHumanMessage)]
+    
+    if not user_messages:
+        return current_user_location
+    
+    # Combiner tous les messages utilisateur pour analyser le contexte complet
+    full_conversation = " ".join([msg.content for msg in user_messages])
+    
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        print(f"⚠️ Re-classification fallback: pas d'API key")
+        return current_user_location
+    
+    try:
+        client = OpenAI(api_key=api_key)
+        
+        reclassification_prompt = f"""Tu es un classificateur de contexte géographique pour Dagan.
+Analyse TOUTE la conversation pour déterminer si l'utilisateur est ACTUELLEMENT:
+- "resident" (habite au Togo) 
+- "diaspora" (habite à l'étranger)
+
+**RÈGLES DE RE-CLASSIFICATION** :
+1. Si l'utilisateur mentionne EXPLICITEMENT un pays étranger (France, Belgique, Canada, USA, etc.) → "diaspora"
+2. Si l'utilisateur dit "et en France?", "pour quelqu'un vivant en..." → bascule à "diaspora"
+3. Si l'utilisateur dit "en Togo", "ici", "sur place" → retour à "resident"
+4. Si la DERNIÈRE question ne mentionne pas de localisation, ASSUME qu'on continue avec la DERNIÈRE localisation mentionnée
+   - Ex: Q1 "passeport resident" → Q2 "et en France?" → Q3 "délais?" = reste diaspora
+5. Contexte actuel: {current_user_location}
+
+**CONVERSATION** :
+{full_conversation}
+
+Réponds UNIQUEMENT par "resident" ou "diaspora"."""
+        
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            temperature=0,
+            messages=[{"role": "user", "content": reclassification_prompt}],
+            max_tokens=20
+        )
+        
+        result = response.choices[0].message.content.strip().lower()
+        
+        if "diaspora" in result:
+            new_location = "diaspora"
+        else:
+            new_location = "resident"
+        
+        if new_location != current_user_location:
+            print(f"  🔄 Re-classification: {current_user_location.upper()} → {new_location.upper()}")
+        else:
+            print(f"  ✓ Contexte confirmé: {new_location.upper()}")
+        
+        return new_location
+    
+    except Exception as e:
+        print(f"⚠️ Re-classification LLM failed: {e}, garde contexte actuel: {current_user_location}")
+        return current_user_location
+
+
 def agent_rag(state: Dict) -> Dict:
     """
     Node AGENT_RAG - Agent ReAct qui utilise les tools pour répondre
@@ -82,6 +243,16 @@ def agent_rag(state: Dict) -> Dict:
     question = user_messages[-1].content
     print(f" Question extraite: '{question}'")
     
+    # ÉTAPE 1: Re-classifier la localisation en fonction du contexte conversationnel complet
+    # Cela permet à l'utilisateur d'itérer : Q1 "resident" → Q2 "et en France?" → Q3 "délais?" (reste diaspora)
+    current_user_location = state.get("user_location", "resident")
+    user_location = re_classify_location_with_context(messages, current_user_location)
+    print(f" Localisation re-classifiée: {user_location}")
+    
+    # ÉTAPE 2: Reformuler la question en tenant compte de la localisation reclassifiée
+    reformulated_question = reformulate_query_with_location(question, user_location)
+    print(f" Question reformulée: '{reformulated_question}'")
+    
     if not is_valid_domain:
         # Ajouter un message d'erreur aux messages existants
         error_message = AIMessage(content="Domaine non validé - impossible de traiter la question")
@@ -98,12 +269,23 @@ def agent_rag(state: Dict) -> Dict:
     # Créer LLM wrapper
     llm = OpenAILLM(api_key=api_key, model="gpt-4o-mini", temperature=0.7)
     
-    # Créer les tools
-    tools = [
-        vector_search_tool,
-        web_search_tool,
-        web_crawl_tool
-    ]
+    # Sélectionner les tools selon la localisation RE-CLASSIFIÉE
+    # Le web_search_tool est différent selon resident/diaspora (include_domains différents)
+    # Le web_crawl_tool reste commun
+    if user_location == "diaspora":
+        tools = [
+            vector_search_tool,
+            web_search_tool_diaspora,  # Pour diaspora : include consulats + .gouv.tg
+            web_crawl_tool
+        ]
+        location_context = "\n\n⚠️ **CONTEXTE UTILISATEUR**: L'utilisateur est en diaspora (à l'étranger). Utilise web_search_tool_diaspora qui inclut les domaines des ambassades/consulats."
+    else:
+        tools = [
+            vector_search_tool,
+            web_search_tool_resident,  # Pour resident : priorité .gouv.tg local
+            web_crawl_tool
+        ]
+        location_context = "\n\n⚠️ **CONTEXTE UTILISATEUR**: L'utilisateur est resident au Togo. Utilise web_search_tool_resident qui inclut .gouv.tg."
     
     print(f"Tools disponibles: {[t.name for t in tools]}")
     
@@ -115,9 +297,27 @@ def agent_rag(state: Dict) -> Dict:
 **TA MISSION :**
 Aider les citoyens avec des informations précises sur les procédures administratives et services publics togolais.
 
+**⚠️ CONTEXTE DE LOCALISATION - RÈGLE CRITIQUE :**
+La question peut être posée par :
+- **RÉSIDENT** : Personne vivant au Togo → Procédures sur place, coordination locale
+- **DIASPORA** : Personne vivant à l'ÉTRANGER → Procédures via consulat/ambassade
+
+Tu reçois le contexte dans la question et dans les outils utilisés. 
+**OBLIGATION ABSOLUE** : Adapter ENTIÈREMENT ta réponse selon le contexte :
+- **RÉSIDENT** : "Au Togo, vous devez vous présenter à..."
+- **DIASPORA** : "En tant que citoyen à l'étranger, vous contactez le consulat/ambassade de..."
+
+**SI CHANGEMENT DE CONTEXTE DÉTECTÉ** (ex: "et pour quelqu'un en France?" après une question resident):
+1. Tu DOIS reconnaître le changement de contexte
+2. Tu DOIS RE-EXÉCUTER COMPLÈTEMENT tous les outils (vector_search → web_search → web_crawl)
+   - Les sources pour la diaspora sont DIFFÉRENTES des sources resident
+   - Les procédures sont DIFFÉRENTES (via consulat vs sur place)
+3. Tu ne dois JAMAIS réutiliser les résultats du contexte précédent
+4. Ta réponse DOIT être entièrement adaptée au nouveau contexte
+
 **RÈGLE ABSOLUE - Priorité des sources :**
 1. **BASE DE CONNAISSANCES** (via vector_search_tool) = SOURCE PRINCIPALE
-2. **Recherche web** (via web_search_tool avec Tavily) = Trouver des URLs .gouv.tg pertinentes
+2. **Recherche web** (via web_search_tool_resident ou web_search_tool_diaspora selon le contexte) = Trouver des URLs .gouv.tg pertinentes
 3. **Crawling web** (via web_crawl_tool sur URLs trouvées) = Extraire le contenu complet
 4. **JAMAIS** d'informations sans vérification
 5. **NE JAMAIS** inventer des informations administratives
@@ -126,6 +326,7 @@ Aider les citoyens avec des informations précises sur les procédures administr
 Si la question manque de précisions (ex: "quelles pièces?", "comment faire?"), tu DOIS:
 - Identifier le contexte probable (passeport, carte d'identité, etc.)
 - Si possible, fournir une réponse générale pour les cas les plus courants
+- **DEMANDER DES CLARIFICATIONS** si vraiment nécessaire pour donner une réponse précise
 - Suggérer de préciser pour une réponse plus adaptée
 - Tu dois etre rigoureux lorsque tu croises les informations entre les différentes sources par exemple eviter de donner le prix de la creation d'une entreprise dont la demande est faite par une personne physique et le prix d'une demande faite par une personne morale.
 
@@ -157,11 +358,18 @@ Exemples de reformulation :
    - Ou si la similarité est faible (< 70%)
    - Alors passer à l'étape 3
 3. Si vector_search retourne "no_results" ou "no_relevant_documents" :
-   - Utiliser web_search_tool pour trouver des URLs .gouv.tg pertinentes
+   - Utiliser web_search_tool_resident ou web_search_tool_diaspora (selon le contexte) pour trouver des URLs .gouv.tg pertinentes
    - Puis utiliser web_crawl_tool sur l'URL la plus pertinente trouvée
    - Si web_search ne trouve rien, passer directement à web_crawl_tool avec une URL connue
 4. Analyser les résultats et synthétiser une réponse complète
-5. Si aucun résultat pertinent après les outils, demander des précisions dans la Final Answer
+5. Si aucun résultat pertinent après les outils, DEMANDER DES PRÉCISIONS dans la Final Answer
+
+**CAPACITÉ À POSER DES QUESTIONS :**
+Tu as le droit et même le devoir de poser des questions si la demande est ambiguë ou manque de contexte. Par exemple:
+- "S'agit-il de... ?"
+- "Peux-tu préciser... ?"
+- "Quelle est exactement ta situation... ?"
+Ces questions doivent être claires et aider l'utilisateur à mieux formuler sa demande.
 
 **STRUCTURE DE RÉPONSE POUR PROCÉDURES :**
 Description | Conditions | Pièces nécessaires (LISTE COMPLÈTE, pas de "etc.")
@@ -171,33 +379,48 @@ Validité | Modalités (en ligne/sur place avec coordonnées)
 
 **TON :** Amical, accessible (tutoiement),emojis, quand t'on te remercie du reponds aussi de facon amicale sans rien ajouter d'autre sinon proposer a l'utilisateur s'il a d'autres question
 
-Tu as accès à ces outils :"""
+Tu as accès à ces outils :""" + location_context
     
     agent_kwargs = {
         "prefix": agent_system_prompt,
         "suffix": """Commence maintenant !
 
 Question: {input}
+""" + location_context + """
+
 Thought: {agent_scratchpad}""",
         "format_instructions": """Utilise EXACTEMENT ce format ReAct (respecte chaque mot-clé):
 
 Question: la question posée
-Thought: je dois reformuler en 2-4 mots-clés optimisés avant de rechercher
+Thought: Je dois reformuler la question en 2-5 mots-clés optimisés EN TENANT COMPTE DE LA LOCALISATION
 Action: vector_search_tool
-Action Input: "2-4 mots-clés optimisés + Togo ou site:.gouv.tg"
+Action Input: "requête reformulée de 2-5 mots-clés"
 Observation: résultat de la recherche
 Thought: [Si aucun résultat pertinent] je dois chercher sur le web
-Action: web_search_tool
-Action Input: "mots-clés pour trouver URLs .gouv.tg"
+Action: web_search_tool_resident OU web_search_tool_diaspora (selon contexte)
+Action Input: "requête reformulée optimisée pour Tavily (2-5 mots-clés)"
 Observation: URLs trouvées
 Thought: je vais crawler l'URL la plus pertinente
 Action: web_crawl_tool
 Action Input: "https://service-public.gouv.tg/..."
 Observation: contenu de la page
 Thought: J'ai maintenant toutes les informations nécessaires pour répondre
-Final Answer: [Ta réponse complète structurée ici]
+Final Answer: [Ta réponse complète structurée ici - ADAPTÉE AU CONTEXTE UTILISATEUR (RESIDENT ou DIASPORA)]
 
-⚠️ IMPORTANT: Tu DOIS commencer ta réponse finale par exactement "Final Answer:" suivi de ta réponse formatée."""
+⚠️ RÈGLES ABSOLUES À RESPECTER: 
+1. TOUJOURS reformuler la question en 2-5 mots-clés AVANT d'appeler les tools
+2. Pour RESIDENT: utiliser web_search_tool_resident + inclure "Togo" ou "site:.gouv.tg"
+3. Pour DIASPORA: utiliser web_search_tool_diaspora + inclure le pays mentionné + "consulat"
+4. Ta RÉPONSE FINALE DOIT ÊTRE ADAPTÉE au contexte:
+   - resident → "Au Togo, vous devez vous présenter à..."
+   - diaspora → "Contactez le consulat/ambassade de..."
+5. SI CHANGEMENT DE CONTEXTE DÉTECTÉ (ex: "et en France?" après resident):
+   ⚠️ **TU DOIS RE-EXÉCUTER LES OUTILS COMPLÈTEMENT**
+   - Appelle vector_search_tool avec la nouvelle requête
+   - Appelle web_search_tool_diaspora (et non resident)
+   - Appelle web_crawl_tool sur la meilleure URL diaspora
+   - NE RÉUTILISE JAMAIS les résultats du contexte précédent
+6. Tu DOIS commencer ta réponse finale par exactement "Final Answer:" suivi de ta réponse formatée"""
     }
     
     # Fonction de gestion personnalisée des erreurs de parsing
@@ -236,9 +459,12 @@ Final Answer: [Ta réponse complète structurée ici]
     
     try:
         print(f" Exécution de l'agent avec question: '{question[:50]}...'")
+        print(f" → Requête optimisée pour tools: '{reformulated_question}'")
         
         # construire le contexte conversationnel pour les questions de suivi
         conversation_context = ""
+        context_changed = False
+        
         if len(user_messages) > 1:
             # Il y a des messages précédents - construire le contexte
             print(f" Détection de {len(user_messages)} messages utilisateur - contexte conversationnel activé")
@@ -247,11 +473,36 @@ Final Answer: [Ta réponse complète structurée ici]
                 conversation_context += f"Message {i}: {msg.content}\n"
             conversation_context += f"\nQuestion actuelle (suite de la conversation) : {question}\n"
             
-            # enrichir la question avec le contexte
-            enriched_question = f"{conversation_context}\nRéponds à la question actuelle en tenant compte du contexte de la conversation."
+            # Vérifier si le contexte de localisation a changé (resident → diaspora ou inverse)
+            # En comparant le contexte actuel avec le contexte de la question précédente
+            if len(user_messages) >= 2:
+                # Si la question mentionne un pays étranger (France, Belgique, USA, etc.)
+                # ET que le contexte précédent était resident → changement de contexte
+                diaspora_keywords = ['france', 'belgique', 'canada', 'usa', 'états-unis', 'suisse', 'allemagne', 'italie', 'espagne', 'pays-bas', 'royaume-uni', 'australie', 'japon', 'singapour']
+                if any(keyword in question.lower() for keyword in diaspora_keywords) and user_location == "diaspora":
+                    context_changed = True
+                    print(f" 🔄 CHANGEMENT DE CONTEXTE DÉTECTÉ : resident → diaspora")
+            
+            # enrichir la question avec le contexte ET forcer la RE-EXÉCUTION des tools
+            if context_changed:
+                enriched_question = f"""{conversation_context}
+
+⚠️ **CHANGEMENT DE CONTEXTE DÉTECTÉ** : La question précédente concernait un RESIDENT, 
+et la question actuelle concerne la DIASPORA (à l'étranger).
+
+**OBLIGATION** : Tu DOIS RE-EXÉCUTER COMPLÈTEMENT les outils (vector_search → web_search → web_crawl) 
+avec les paramètres DIASPORA, car les sources et procédures sont DIFFÉRENTES :
+- Resident: procédure sur place au Togo
+- Diaspora: procédure via consulat/ambassade
+
+**REQUÊTE OPTIMISÉE POUR TOOLS (DIASPORA)**: {reformulated_question}
+
+Exécute TOUS les outils avec cette nouvelle requête diaspora (ne réutilise PAS les résultats précédents)."""
+            else:
+                enriched_question = f"{conversation_context}\nRéponds à la question actuelle en tenant compte du contexte de la conversation.\n\n**REQUÊTE OPTIMISÉE POUR TOOLS**: {reformulated_question}"
         else:
             print(" Premier message - pas de contexte conversationnel")
-            enriched_question = question
+            enriched_question = f"**REQUÊTE OPTIMISÉE POUR TOOLS**: {reformulated_question}"
         
         # exécuter l'agent avec invoke (méthode recommandée)
         result = agent_executor.invoke({"input": enriched_question})
