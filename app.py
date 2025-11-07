@@ -1129,6 +1129,61 @@ async def crag_stream(
     )
 
 
+
+#============================================================================
+# ENDPOINTS POUR LA GESTION FILE UPLOA VIA la PAGE admin
+# ============================================================================
+
+
+@app.post("/api/upload")
+async def upload_pdf_file(file: UploadFile = File(...)):
+    """
+    Reçoit et sauvegarde un fichier PDF dans le répertoire 'uploads'.
+    """
+    # Vérifie si le nom du fichier se termine bien par .pdf
+    if not file.filename.lower().endswith('.pdf'):
+        raise HTTPException(
+            status_code=400,
+            detail="Format de fichier non supporté. Uniquement les .pdf sont acceptés."
+        )
+
+    try:
+        # Définit le nom du dossier où seront stockés les fichiers
+        uploads_dir = Path("uploads")
+        # Crée le dossier s'il n'existe pas déjà
+        uploads_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Définit le chemin complet où le fichier sera sauvegardé
+        file_path = uploads_dir / file.filename
+        
+        # Lit le contenu du fichier envoyé
+        contents = await file.read()
+        # Écrit le contenu dans le nouveau fichier sur le serveur
+        with open(file_path, "wb") as f:
+            f.write(contents)
+
+        print(f"✓ Fichier '{file.filename}' sauvegardé avec succès dans '{file_path}'")
+
+        # Renvoie une réponse JSON pour confirmer le succès
+        return JSONResponse(
+            content={
+                "success": True,
+                "message": f"Fichier '{file.filename}' envoyé avec succès.",
+                "filename": file.filename,
+                "saved_path": str(file_path)
+            }
+        )
+
+    except Exception as e:
+        # En cas d'erreur pendant la sauvegarde, renvoie une erreur 500
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Une erreur est survenue lors de la sauvegarde du fichier: {str(e)}"
+        )
+
+
 # ============================================================================
 # NOTE : Endpoints /conversations/* et /sources/* SUPPRIMÉS
 # Pas de persistence Supabase - Seulement InMemorySaver pour mémoire volatile
