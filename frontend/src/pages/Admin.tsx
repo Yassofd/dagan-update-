@@ -39,8 +39,12 @@ const Admin = () => {
 
     try {
       const apiUrl = import.meta.env.VITE_API_URL;
+      if (!apiUrl) {
+        alert("Erreur de configuration : L'URL de l'API n'est pas définie. Veuillez vérifier le fichier .env et redémarrer le serveur.");
+        return;
+      }
       // Envoie une requête POST au serveur à l'endpoint '/api/upload'.
-      const response = await fetch(`${apiUrl}api/upload`, {
+      const response = await fetch(`${apiUrl}/api/upload`, {
         method: 'POST',
         body: formData,
       });
