@@ -1,6 +1,29 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 
 // ============================================================================
+// HELPER FUNCTION for UUID
+// ============================================================================
+
+/**
+ * Generates a v4-like UUID.
+ * Uses crypto.randomUUID() if available (secure contexts), otherwise falls back
+ * to a Math.random()-based implementation.
+ * @returns {string} A UUID string.
+ */
+const generateUUID = () => {
+  if (typeof window !== 'undefined' && window.crypto && window.crypto.randomUUID) {
+    return window.crypto.randomUUID();
+  }
+  // Fallback for non-secure contexts (like HTTP) or server-side rendering
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+};
+
+
+// ============================================================================
 // TYPES
 // ============================================================================
 
@@ -71,7 +94,7 @@ export function useHybridRAG() {
     const stored = localStorage.getItem('dagan_conversation_id');
     if (stored) return stored;
     
-    const newId = crypto.randomUUID();
+    const newId = generateUUID(); // <-- FIX: Replaced crypto.randomUUID()
     localStorage.setItem('dagan_conversation_id', newId);
     return newId;
   });
@@ -296,7 +319,7 @@ export function useHybridRAG() {
     }
     
     // Générer nouveau conversation_id
-    const newId = crypto.randomUUID();
+    const newId = generateUUID(); // <-- FIX: Replaced crypto.randomUUID()
     localStorage.setItem('dagan_conversation_id', newId);
     setConversationId(newId);  // ← Met à jour l'état React
     
