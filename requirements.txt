@@ -6,6 +6,7 @@ langchain-openai==0.3.23
 langchain-google-genai==2.1.12
 langchain-core==0.3.79
 langchain-community
+pypdf
 langgraph==0.4.8
 pydantic==2.11.7
 requests==2.32.3
