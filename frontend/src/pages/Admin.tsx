@@ -36,6 +36,7 @@ const Admin = () => {
     const formData = new FormData();
     // Ajoute le fichier sélectionné à l'objet FormData avec la clé 'file'.
     formData.append('file', file);
+    formData.append('collection_name', 'pdf_uploads');
 
     try {
       const apiUrl = import.meta.env.VITE_API_URL;
@@ -43,6 +44,10 @@ const Admin = () => {
         alert("Erreur de configuration : L'URL de l'API n'est pas définie. Veuillez vérifier le fichier .env et redémarrer le serveur.");
         return;
       }
+
+      // Affiche l'URL pour le débogage
+      alert(`L'URL complète qui sera appelée est : ${apiUrl}/api/upload`);
+
       // Envoie une requête POST au serveur à l'endpoint '/api/upload'.
       const response = await fetch(`${apiUrl}/api/upload`, {
         method: 'POST',
