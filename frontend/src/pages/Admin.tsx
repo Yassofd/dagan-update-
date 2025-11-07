@@ -38,8 +38,9 @@ const Admin = () => {
     formData.append('file', file);
 
     try {
+      const apiUrl = import.meta.env.VITE_API_URL;
       // Envoie une requête POST au serveur à l'endpoint '/api/upload'.
-      const response = await fetch('/api/upload', {
+      const response = await fetch(`${apiUrl}api/upload`, {
         method: 'POST',
         body: formData,
       });
